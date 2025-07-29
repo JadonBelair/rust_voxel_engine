@@ -1,7 +1,6 @@
-// use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
 use glam::{Mat4, Vec3};
-use winit::keyboard::KeyCode;
+use winit::{event::MouseScrollDelta, keyboard::KeyCode};
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -18,7 +17,6 @@ impl CameraUniform {
         }
     }
 
-    // UPDATED!
     pub fn update_view_proj(&mut self, camera: &Camera, projection: &Projection) {
         self.view_position = camera.position.extend(1.0).to_array();
         self.view_proj = (projection.calc_matrix() * camera.calc_matrix()).to_cols_array_2d();
@@ -142,6 +140,23 @@ impl CameraController {
             }
             _ => false,
         }
+    }
+    
+    pub fn handle_scroll(&mut self, delta: &MouseScrollDelta) {
+        let amount = match delta {
+            MouseScrollDelta::PixelDelta(amount) => amount.y as f32,
+            MouseScrollDelta::LineDelta(_, y) => *y,
+        };
+
+        let scale = if amount > 0.0 {
+            1.1
+        } else if amount < 0.0 {
+            0.9
+        } else {
+            1.0
+        };
+
+        self.speed *= scale;
     }
 
     pub fn handle_mouse(&mut self, mouse_dx: f64, mouse_dy: f64) {

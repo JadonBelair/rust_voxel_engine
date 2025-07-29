@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::{DVec3, Vec3};
 use noise::NoiseFn;
 use rand::Rng;
 use wgpu::{util::DeviceExt, RenderPass};
@@ -39,6 +39,8 @@ pub enum Block {
 pub struct Chunk {
     pub position: Vec3,
     pub blocks: [Block; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
+    pub is_empty: bool,
+    pub bounding_box: Aabb,
     pub mesh: Option<ChunkMesh>,
 }
 
@@ -46,13 +48,15 @@ impl Chunk {
     const NOISE_SCALE: f64 = 20.0;
 
     pub fn new(position: Vec3) -> Self {
+        let world_space = position * CHUNK_SIZE as f32;
+
         let mut chunk = Self {
             position,
             blocks: [Block::AIR; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
+            is_empty: true,
+            bounding_box: Aabb::new(world_space, world_space + CHUNK_SIZE as f32),
             mesh: None,
         };
-
-        let world_space = position * CHUNK_SIZE as f32;
 
         let noise = noise::Perlin::new(0);
 
@@ -60,17 +64,28 @@ impl Chunk {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
                     let voxel_position = Vec3::new(x as f32, y as f32, z as f32) + world_space;
+                    let mut noise_pos = DVec3::new(
+                        voxel_position.x as f64,
+                        voxel_position.y as f64,
+                        voxel_position.z as f64
+                    );
+                    noise_pos += 0.5;
+                    noise_pos /= Self::NOISE_SCALE;
+
                     if DO_3D {
-                        let val = ((noise.get([voxel_position.x as f64 / Self::NOISE_SCALE + 0.5, voxel_position.y as f64 / Self::NOISE_SCALE + 0.5, voxel_position.z as f64 / Self::NOISE_SCALE + 0.5]) + 1.0) / 2.0 * CHUNK_SIZE as f64) as u32;
+                        let val = ((noise.get([noise_pos.x, noise_pos.y, noise_pos.z]) + 1.0) / 2.0 * CHUNK_SIZE as f64) as u32;
                         if val > 16 {
                             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] = Block::GRASS;
+                            chunk.is_empty = false;
                         }
                     } else {
-                        let val = ((noise.get([voxel_position.x as f64 / Self::NOISE_SCALE + 0.5, voxel_position.z as f64 / Self::NOISE_SCALE + 0.5]) + 1.0) / 2.0 * CHUNK_SIZE as f64) as u32;
+                        let val = ((noise.get([noise_pos.x, noise_pos.z]) + 1.0) / 2.0 * CHUNK_SIZE as f64) as u32;
                         if val == voxel_position.y as u32 {
                             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] = Block::GRASS;
+                            chunk.is_empty = false;
                         } else if val > voxel_position.y as u32 {
                             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] = Block::DIRT;
+                            chunk.is_empty = false;
                         }
                     }
                 }
@@ -80,7 +95,7 @@ impl Chunk {
         chunk
     }
 
-    pub fn generate_mesh(&mut self) -> ChunkMeshData {
+    pub fn generate_mesh(&self) -> ChunkMeshData {
         let mut temp_vertices = Vec::new();
         let mut temp_indices= Vec::new();
 
@@ -120,7 +135,6 @@ impl Chunk {
                     if block == Block::AIR { continue; }
 
                     let shade = Vec3::splat(rng.random_range((0.8)..(1.2)));
-                    // let color = Vec3::new(rng.random_range(0.0..1.0), rng.random_range(0.0..1.0), rng.random_range(0.0..1.0));
 
                     for face in 0..6 {
                         let mut nx = x as i32;
@@ -220,12 +234,7 @@ impl Chunk {
 
     pub fn render(&self, render_pass: &mut RenderPass, frustum: &Frustum) {
         if let Some(mesh) = &self.mesh {
-            let aabb = Aabb {
-                min: self.position * CHUNK_SIZE as f32,
-                max: self.position * CHUNK_SIZE as f32 + CHUNK_SIZE as f32,
-            };
-
-            if frustum.contains_aabb(&aabb) {
+            if frustum.contains_aabb(&self.bounding_box) {
                 render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..mesh.index_count, 0, 0..1);

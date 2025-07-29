@@ -53,7 +53,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let specular = specular_strength * spec;
 
 	let attenuation = 1.0 / (1.0 + 0.027 * distance + 0.0028 * (distance * distance));
-	// let attenuated_diffuse = diffuse * attenuation;
 	let attenuated_specular = specular * attenuation;
 
 

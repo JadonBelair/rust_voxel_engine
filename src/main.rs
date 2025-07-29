@@ -50,9 +50,8 @@ pub struct State {
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
     window: Arc<Window>,
+    is_cursor_visible: bool,
 
-    // chunk: Chunk,
-    // chunks: Vec<Chunk>,
     chunk_manager: ChunkManager,
 
     camera: Camera,
@@ -120,7 +119,7 @@ impl State {
             desired_maximum_frame_latency: 3,
         };
 
-        let camera = Camera::new(Vec3::new(0.0, 0.0, -1.0), (90.0_f32).to_radians(), 0.0);
+        let camera = Camera::new(Vec3::new(0.0, CHUNK_SIZE as f32, 0.0), 0.0, 0.0);
         let projection = Projection::new(size.width, size.height, 60.0, 0.1, 1000.0);
         let camera_controller = CameraController::new(10.0, 0.1);
 
@@ -209,22 +208,7 @@ impl State {
             cache: None,
         });
 
-        // let mut chunk = Chunk::new(Vec3::ZERO);
-        // chunk.generate_mesh(&device);
-
-        // let mut chunks = Vec::new();
-        // for x in 0.. 9 {
-        //     for y in 0..2 {
-        //         for z in 0..9 {
-        //             let pos = Vec3::new(x as f32, y as f32, z as f32);
-        //             let mut chunk = Chunk::new(pos);
-        //             chunk.generate_mesh(&device);
-
-        //             chunks.push(chunk);
-        //         }
-        //     }
-        // }
-        let mut chunk_manager = ChunkManager::new(8);
+        let mut chunk_manager = ChunkManager::new(10);
         chunk_manager.update_around(Vec3::ZERO);
 
         let (depth_texture, depth_texture_view) = create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));
@@ -236,11 +220,9 @@ impl State {
             config,
             is_surface_configured: false,
             render_pipeline,
-            // vertex_buffer,
-            // num_vertices,
             window,
+            is_cursor_visible: false,
 
-            // chunks,
             chunk_manager,
 
             camera,
@@ -271,8 +253,15 @@ impl State {
         if !self.camera_controller.handle_key(code, is_pressed) {
             match (code, is_pressed) {
                 (KeyCode::Escape, true) => {
-                    self.window.set_cursor_grab(CursorGrabMode::None).unwrap();
-                    self.window.set_cursor_visible(true);
+                    let grab_mode = if !self.is_cursor_visible {
+                        CursorGrabMode::None
+                    } else {
+                        CursorGrabMode::Locked
+                    };
+
+                    self.window.set_cursor_grab(grab_mode).unwrap();
+                    self.window.set_cursor_visible(!self.is_cursor_visible);
+                    self.is_cursor_visible = !self.is_cursor_visible;
                 },
                 _ => (),
             }
@@ -291,7 +280,8 @@ impl State {
         self.camera_uniform.update_view_proj(&self.camera, &self.projection);
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
 
-        self.chunk_manager.build_chunks_in_queue(8, &self.device);
+        self.chunk_manager.build_chunk_data_in_queue(15);
+        self.chunk_manager.build_chunk_mesh_in_queue(8, &self.device);
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -344,10 +334,6 @@ impl State {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             let frustum = Frustum::from_camera(&self.camera, &self.projection);
-            // self.chunk.render(&mut render_pass, &frustum);
-            // for chunk in &mut self.chunks {
-            //     chunk.render(&mut render_pass, &frustum);
-            // }
             self.chunk_manager.render(&mut render_pass, &frustum);
         }
 
@@ -373,7 +359,7 @@ impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes();
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-        window.set_cursor_grab(CursorGrabMode::Confined).unwrap();
+        window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
         window.set_cursor_visible(false);
         self.state = Some(pollster::block_on(State::new(window)).unwrap());
     }
@@ -395,7 +381,6 @@ impl ApplicationHandler<State> for App {
 
         match event {
             DeviceEvent::MouseMotion { delta: (dx, dy) } => {
-                // println!("{dx} {dy}");
                 state.camera_controller.handle_mouse(dx, dy);
             },
             _ => ()
@@ -439,6 +424,7 @@ impl ApplicationHandler<State> for App {
                     },
                 ..
             } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            WindowEvent::MouseWheel { delta, .. } => state.camera_controller.handle_scroll(&delta),
             _ => (),
         }
     }

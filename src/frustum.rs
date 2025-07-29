@@ -7,6 +7,15 @@ pub struct Aabb {
     pub max: Vec3
 }
 
+impl Aabb {
+    pub fn new(min: Vec3, max: Vec3) -> Self {
+        Self {
+            min,
+            max,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Frustum {
     pub planes: [Vec4; 6],
