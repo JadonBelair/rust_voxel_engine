@@ -1,11 +1,7 @@
 // use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
 use glam::{Mat4, Vec3};
-use winit::dpi::PhysicalPosition;
-use winit::event::*;
 use winit::keyboard::KeyCode;
-
-// const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.0001;
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -93,7 +89,6 @@ pub struct CameraController {
     amount_down: f32,
     rotate_horizontal: f32,
     rotate_vertical: f32,
-    scroll: f32,
     speed: f32,
     sensitivity: f32,
 }
@@ -109,7 +104,6 @@ impl CameraController {
             amount_down: 0.0,
             rotate_horizontal: 0.0,
             rotate_vertical: 0.0,
-            scroll: 0.0,
             speed,
             sensitivity,
         }
@@ -153,14 +147,6 @@ impl CameraController {
     pub fn handle_mouse(&mut self, mouse_dx: f64, mouse_dy: f64) {
         self.rotate_horizontal += mouse_dx as f32;
         self.rotate_vertical += mouse_dy as f32;
-    }
-
-    pub fn handle_scroll(&mut self, delta: &MouseScrollDelta) {
-        self.scroll = match delta {
-            // I'm assuming a line is about 100 pixels
-            MouseScrollDelta::LineDelta(_, scroll) => -scroll * 0.5,
-            MouseScrollDelta::PixelDelta(PhysicalPosition { y: scroll, .. }) => -*scroll as f32,
-        };
     }
 
     pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {

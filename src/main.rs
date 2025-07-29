@@ -8,7 +8,7 @@ use glam::Vec3;
 use wgpu::{util::DeviceExt, PresentMode};
 use winit::{
     application::ApplicationHandler,
-    event::{DeviceEvent, KeyEvent, MouseScrollDelta, WindowEvent},
+    event::{DeviceEvent, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window, WindowId},
@@ -279,10 +279,6 @@ impl State {
         }
     }
 
-    pub fn handle_mouse_scroll(&mut self, delta: &MouseScrollDelta) {
-        self.camera_controller.handle_scroll(delta);
-    }
-
     pub fn update(&mut self, dt: std::time::Duration) {
         let prev_chunk = (self.camera.position / CHUNK_SIZE as f32).floor();
         self.camera_controller.update_camera(&mut self.camera, dt);
@@ -443,9 +439,6 @@ impl ApplicationHandler<State> for App {
                     },
                 ..
             } => state.handle_key(event_loop, code, key_state.is_pressed()),
-            WindowEvent::MouseWheel { delta, .. } => {
-                state.handle_mouse_scroll(&delta);
-            }
             _ => (),
         }
     }
