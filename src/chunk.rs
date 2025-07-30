@@ -1,6 +1,6 @@
 use glam::{DVec3, IVec3, UVec3, Vec3};
 use noise::NoiseFn;
-use rand::Rng;
+// use rand::Rng;
 use wgpu::{util::DeviceExt, RenderPass};
 
 use crate::frustum::{Aabb, Frustum};
@@ -119,7 +119,7 @@ impl Chunk {
             [3, 2, 6, 7],
         ];
 
-        let mut rng = rand::rng();
+        // let mut rng = rand::rng();
 
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {

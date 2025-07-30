@@ -258,10 +258,15 @@ impl State {
     pub fn handle_mouse_button(&mut self, _event_loop: &ActiveEventLoop, button: MouseButton, is_pressed: bool) {
         match (button, is_pressed) {
             (MouseButton::Left, true) => {
-                if let Some((pos, _normal)) = self.chunk_manager.ray_cast(self.camera.position, self.camera.pitch, self.camera.yaw, 6.0) {
+                if let Some((pos, _normal)) = self.chunk_manager.ray_cast(self.camera.position, self.camera.pitch, self.camera.yaw, 10.0) {
                     self.chunk_manager.set_block(pos, Block::AIR);
                 }
             },
+            (MouseButton::Right, true) => {
+                if let Some((pos, normal)) = self.chunk_manager.ray_cast(self.camera.position, self.camera.pitch, self.camera.yaw, 0.0) {
+                    self.chunk_manager.set_block(pos + normal, Block::DIRT);
+                }
+            }
             _ => ()
         }
     }

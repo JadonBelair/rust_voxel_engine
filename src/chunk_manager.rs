@@ -54,8 +54,6 @@ impl ChunkManager {
     }
 
     pub fn ray_cast(&self, origin: Vec3, pitch: f32, yaw: f32, max_distance: f32) -> Option<(IVec3, IVec3)> {
-        let max_distance = max_distance.clamp(1.0, 6.0);
-
         let (yaw_sin, yaw_cos) = yaw.sin_cos();
         let (pitch_sin, pitch_cos) = pitch.sin_cos();
 
@@ -65,12 +63,10 @@ impl ChunkManager {
             yaw_sin * pitch_cos,
         );
 
-        let mut current_pos = origin;
         let step = direction.signum();
-        // FIX: Use absolute value to ensure positive t_delta
         let t_delta = (1.0 / direction).abs().min(Vec3::splat(f32::MAX));
 
-        let mut voxel = current_pos.floor().as_ivec3();
+        let mut voxel = origin.floor().as_ivec3();
 
         let mut t_max = (voxel.as_vec3() + step.max(Vec3::ZERO) - origin) / direction;
         t_max = t_max.max(Vec3::splat(0.0));
@@ -81,7 +77,7 @@ impl ChunkManager {
         while traveled < max_distance {
             if let Some(block) = self.get_block(voxel) {
                 if !matches!(block, Block::AIR) {
-                    return Some((current_pos.floor().as_ivec3(), normal));
+                    return Some((voxel, normal));
                 }
             }
 
@@ -108,8 +104,6 @@ impl ChunkManager {
                 t_max.z += t_delta.z;
                 normal = IVec3::new(0, 0, -step.z as i32);
             }
-
-            current_pos = origin + direction * traveled;
         }
 
         None
@@ -119,7 +113,7 @@ impl ChunkManager {
         let chunk_pos = self.get_chunk_position(position);
         let inner_pos = self.get_inner_position(position);
 
-        println!("{chunk_pos} {inner_pos}");
+        // println!("{chunk_pos} {inner_pos}");
 
         if let Some(chunk) = self.chunk_map.get_mut(&chunk_pos) {
             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * inner_pos.z as usize + CHUNK_SIZE * inner_pos.y as usize + inner_pos.x as usize] = block;
