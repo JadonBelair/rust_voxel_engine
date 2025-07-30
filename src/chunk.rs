@@ -1,4 +1,4 @@
-use glam::{DVec3, Vec3};
+use glam::{DVec3, Mat4, Vec3};
 use noise::NoiseFn;
 use rand::Rng;
 use wgpu::{util::DeviceExt, RenderPass};
@@ -12,13 +12,13 @@ pub const CHUNK_SIZE: usize = 32;
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     pub position: Vec3,
-    pub normal: Vec3,
+    pub normal: u32,
     pub color: Vec3,
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Uint32, 2 => Float32x3];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -38,6 +38,7 @@ pub enum Block {
 
 pub struct Chunk {
     pub position: Vec3,
+    pub model_matrix: Mat4,
     pub blocks: [Block; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
     pub is_empty: bool,
     pub bounding_box: Aabb,
@@ -45,13 +46,14 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    const NOISE_SCALE: f64 = 20.0;
+    const NOISE_SCALE: f64 = 30.0;
 
     pub fn new(position: Vec3) -> Self {
         let world_space = position * CHUNK_SIZE as f32;
 
         let mut chunk = Self {
             position,
+            model_matrix: Mat4::from_translation(world_space),
             blocks: [Block::AIR; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
             is_empty: true,
             bounding_box: Aabb::new(world_space, world_space + CHUNK_SIZE as f32),
@@ -108,14 +110,14 @@ impl Chunk {
             Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 1.0), Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.0, 1.0, 1.0)
         ];
 
-        const FACE_NORMALS: [Vec3; 6] = [
-            Vec3::new( 0.0,  0.0, -1.0), // Front
-            Vec3::new( 0.0,  0.0,  1.0), // Back
-            Vec3::new(-1.0,  0.0,  0.0), // Left
-            Vec3::new( 1.0,  0.0,  0.0), // Right
-            Vec3::new( 0.0, -1.0,  0.0), // Bottom
-            Vec3::new( 0.0,  1.0,  0.0), // Top
-        ];
+        // const FACE_NORMALS: [Vec3; 6] = [
+        //     Vec3::new( 0.0,  0.0, -1.0), // Front
+        //     Vec3::new( 0.0,  0.0,  1.0), // Back
+        //     Vec3::new(-1.0,  0.0,  0.0), // Left
+        //     Vec3::new( 1.0,  0.0,  0.0), // Right
+        //     Vec3::new( 0.0, -1.0,  0.0), // Bottom
+        //     Vec3::new( 0.0,  1.0,  0.0), // Top
+        // ];
 
         const FACE_INDICES: [[u32; 4]; 6] = [
             [0, 1, 2, 3],
@@ -167,8 +169,8 @@ impl Chunk {
                         let base_index = vertex_count as u32;
 
                         for i in 0..4 {
-                            let position = CUBE_VERTICES[FACE_INDICES[face][i] as usize] + Vec3::new(x as f32, y as f32, z as f32) + (self.position * CHUNK_SIZE as f32);
-                            let normal = FACE_NORMALS[face];
+                            let position = CUBE_VERTICES[FACE_INDICES[face][i] as usize] + Vec3::new(x as f32, y as f32, z as f32); // + (self.position * CHUNK_SIZE as f32);
+                            // let normal = FACE_NORMALS[face];
                             let color = if block == Block::DIRT {
                                 Vec3::new(0.36, 0.25, 0.125)
                             } else if block == Block::GRASS {
@@ -179,7 +181,7 @@ impl Chunk {
 
                             let v = Vertex {
                                 position,
-                                normal,
+                                normal: face as u32,
                                 color,
                             };
 
@@ -235,6 +237,7 @@ impl Chunk {
     pub fn render(&self, render_pass: &mut RenderPass, frustum: &Frustum) {
         if let Some(mesh) = &self.mesh {
             if frustum.contains_aabb(&self.bounding_box) {
+                render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, bytemuck::cast_slice(&self.model_matrix.to_cols_array_2d()));
                 render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..mesh.index_count, 0, 0..1);

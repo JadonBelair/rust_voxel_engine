@@ -87,8 +87,11 @@ impl State {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
-                required_features: wgpu::Features::POLYGON_MODE_LINE | wgpu::Features::POLYGON_MODE_POINT,
-                required_limits: wgpu::Limits::default(),
+                required_features: wgpu::Features::POLYGON_MODE_LINE | wgpu::Features::POLYGON_MODE_POINT | wgpu::Features::PUSH_CONSTANTS,
+                required_limits: wgpu::Limits {
+                    max_push_constant_size: 64,
+                    ..wgpu::Limits::downlevel_defaults()
+                },
                 memory_hints: Default::default(),
                 trace: wgpu::Trace::Off,
             })
@@ -161,7 +164,10 @@ impl State {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[&camera_bind_group_layout],
-                push_constant_ranges: &[],
+                push_constant_ranges: &[wgpu::PushConstantRange {
+                    stages: wgpu::ShaderStages::VERTEX,
+                    range: 0..std::mem::size_of::<[[f32; 4]; 4]>() as u32,
+                }],
             });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -335,6 +341,7 @@ impl State {
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             let frustum = Frustum::from_camera(&self.camera, &self.projection);
             self.chunk_manager.render(&mut render_pass, &frustum);
+            // println!("{}", self.camera.position);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
