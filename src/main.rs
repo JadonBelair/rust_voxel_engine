@@ -1,11 +1,11 @@
 use std::{sync::Arc, time::Instant};
 
 use camera::{Camera, CameraController, CameraUniform, Projection};
-use chunk::{Block, Vertex, CHUNK_SIZE};
+use chunk::{Block, CHUNK_SIZE, Vertex};
 use chunk_manager::ChunkManager;
 use frustum::Frustum;
 use glam::{IVec3, Vec3};
-use wgpu::{util::DeviceExt, PresentMode};
+use wgpu::{PresentMode, util::DeviceExt};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
@@ -15,11 +15,16 @@ use winit::{
 };
 
 mod camera;
-mod frustum;
 mod chunk;
 mod chunk_manager;
+mod frustum;
 
-fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32, label: Option<&str>) -> (wgpu::Texture, wgpu::TextureView) {
+fn create_depth_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    label: Option<&str>,
+) -> (wgpu::Texture, wgpu::TextureView) {
     let size = wgpu::Extent3d {
         width,
         height,
@@ -87,7 +92,9 @@ impl State {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
-                required_features: wgpu::Features::POLYGON_MODE_LINE | wgpu::Features::POLYGON_MODE_POINT | wgpu::Features::PUSH_CONSTANTS,
+                required_features: wgpu::Features::POLYGON_MODE_LINE
+                    | wgpu::Features::POLYGON_MODE_POINT
+                    | wgpu::Features::PUSH_CONSTANTS,
                 required_limits: wgpu::Limits {
                     max_push_constant_size: 12,
                     ..wgpu::Limits::downlevel_defaults()
@@ -176,7 +183,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc(),],
+                buffers: &[Vertex::desc()],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -217,7 +224,8 @@ impl State {
         let mut chunk_manager = ChunkManager::new(10);
         chunk_manager.update_around(IVec3::ZERO);
 
-        let (depth_texture, depth_texture_view) = create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));
+        let (depth_texture, depth_texture_view) =
+            create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));
 
         Ok(Self {
             surface,
@@ -251,23 +259,39 @@ impl State {
             self.projection.resize(width, height);
             self.is_surface_configured = true;
 
-            (self.depth_texture, self.depth_texture_view) = create_depth_texture(&self.device, width, height, Some("Depth Texture"));
+            (self.depth_texture, self.depth_texture_view) =
+                create_depth_texture(&self.device, width, height, Some("Depth Texture"));
         }
     }
 
-    pub fn handle_mouse_button(&mut self, _event_loop: &ActiveEventLoop, button: MouseButton, is_pressed: bool) {
+    pub fn handle_mouse_button(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        button: MouseButton,
+        is_pressed: bool,
+    ) {
         match (button, is_pressed) {
             (MouseButton::Left, true) => {
-                if let Some((pos, _normal)) = self.chunk_manager.ray_cast(self.camera.position, self.camera.pitch, self.camera.yaw, 10.0) {
+                if let Some((pos, _normal)) = self.chunk_manager.ray_cast(
+                    self.camera.position,
+                    self.camera.pitch,
+                    self.camera.yaw,
+                    10.0,
+                ) {
                     self.chunk_manager.set_block(pos, Block::AIR);
                 }
-            },
+            }
             (MouseButton::Right, true) => {
-                if let Some((pos, normal)) = self.chunk_manager.ray_cast(self.camera.position, self.camera.pitch, self.camera.yaw, 0.0) {
+                if let Some((pos, normal)) = self.chunk_manager.ray_cast(
+                    self.camera.position,
+                    self.camera.pitch,
+                    self.camera.yaw,
+                    10.0,
+                ) {
                     self.chunk_manager.set_block(pos + normal, Block::DIRT);
                 }
             }
-            _ => ()
+            _ => (),
         }
     }
 
@@ -284,13 +308,26 @@ impl State {
                     self.window.set_cursor_grab(grab_mode).unwrap();
                     self.window.set_cursor_visible(!self.is_cursor_visible);
                     self.is_cursor_visible = !self.is_cursor_visible;
-                },
+                }
                 _ => (),
             }
         }
     }
 
     pub fn update(&mut self, dt: std::time::Duration) {
+        // if self
+        //     .chunk_manager
+        //     .ray_cast(
+        //         self.camera.position + Vec3::new(0.0, -0.9, 0.0),
+        //         -90.0_f32.to_radians(),
+        //         0.0,
+        //         1.0,
+        //     )
+        //     .is_none()
+        // {
+        //     self.camera.position.y -= 0.05;
+        // }
+
         let prev_chunk = (self.camera.position / CHUNK_SIZE as f32).floor();
         self.camera_controller.update_camera(&mut self.camera, dt);
         let new_chunk = (self.camera.position / CHUNK_SIZE as f32).floor();
@@ -299,11 +336,17 @@ impl State {
             self.chunk_manager.update_around(new_chunk.as_ivec3());
         }
 
-        self.camera_uniform.update_view_proj(&self.camera, &self.projection);
-        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        self.camera_uniform
+            .update_view_proj(&self.camera, &self.projection);
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
 
         self.chunk_manager.build_chunk_data_in_queue(15);
-        self.chunk_manager.build_chunk_mesh_in_queue(8, &self.device);
+        self.chunk_manager
+            .build_chunk_mesh_in_queue(8, &self.device);
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -373,7 +416,10 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        Self { state: None, last_time: Instant::now() }
+        Self {
+            state: None,
+            last_time: Instant::now(),
+        }
     }
 }
 
@@ -404,8 +450,8 @@ impl ApplicationHandler<State> for App {
         match event {
             DeviceEvent::MouseMotion { delta: (dx, dy) } => {
                 state.camera_controller.handle_mouse(dx, dy);
-            },
-            _ => ()
+            }
+            _ => (),
         }
     }
 
@@ -436,7 +482,7 @@ impl ApplicationHandler<State> for App {
                     }
                     Err(e) => log::error!("unable to render {}", e),
                 }
-            },
+            }
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {

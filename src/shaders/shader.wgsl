@@ -60,29 +60,42 @@ fn vs_main(
     return out;
 }
 
+const BLINN_PHONG: bool = true;
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	let ambient = 0.4 * in.color;
+	if (BLINN_PHONG) {
+		let ambient = 0.4 * in.color;
 
-	var light_dir = in.camera_pos - in.frag_position;
-	let distance = length(light_dir);
-	light_dir = normalize(light_dir);
+		var light_dir = in.camera_pos - in.frag_position;
+		let distance = length(light_dir);
+		light_dir = normalize(light_dir);
 
-	let view_dir = light_dir;
-	let halfway_dir = normalize(light_dir + view_dir);
+		let view_dir = light_dir;
+		let halfway_dir = normalize(light_dir + view_dir);
 
-	let diffuse_strength = max(dot(light_dir, in.normal), 0.0);
-	let diffuse = diffuse_strength * in.color;
+		let diffuse_strength = max(dot(light_dir, in.normal), 0.0);
+		let diffuse = diffuse_strength * in.color;
 
-	let specular_strength = 0.3;
-	let reflect_dir = reflect(-light_dir, in.normal);
-	let spec = pow(max(dot(in.normal, halfway_dir), 0.0), 16);
-	let specular = specular_strength * spec;
+		let specular_strength = 0.3;
+		let reflect_dir = reflect(-light_dir, in.normal);
+		let spec = pow(max(dot(in.normal, halfway_dir), 0.0), 32);
+		let specular = specular_strength * spec;
 
-	let attenuation = 1.0 / (1.0 + 0.027 * distance + 0.0028 * (distance * distance));
-	let attenuated_specular = specular * attenuation;
+		let attenuation = 1.0 / (1.0 + 0.027 * distance + 0.0028 * (distance * distance));
+		let attenuated_specular = specular * attenuation;
 
+		let result = ambient + diffuse + attenuated_specular;
+		return vec4<f32>(result, 1.0);
+	} else {
+		var result = in.color;
 
-	let result = ambient + diffuse + attenuated_specular;
-	return vec4<f32>(result, 1.0);
+		if (in.normal.x != 0.0) {
+			result *= 0.6;
+		} else if (in.normal.z != 0.) {
+			result *= 0.8;
+		}
+
+		return vec4<f32>(result, 1.0);
+	}
 }

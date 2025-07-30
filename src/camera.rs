@@ -1,5 +1,5 @@
-use std::time::Duration;
 use glam::{Mat4, Vec3};
+use std::time::Duration;
 use winit::{event::MouseScrollDelta, keyboard::KeyCode};
 
 #[repr(C)]
@@ -87,6 +87,7 @@ pub struct CameraController {
     amount_down: f32,
     rotate_horizontal: f32,
     rotate_vertical: f32,
+    axis_locked: bool,
     speed: f32,
     sensitivity: f32,
 }
@@ -102,17 +103,14 @@ impl CameraController {
             amount_down: 0.0,
             rotate_horizontal: 0.0,
             rotate_vertical: 0.0,
+            axis_locked: false,
             speed,
             sensitivity,
         }
     }
 
     pub fn handle_key(&mut self, key: KeyCode, pressed: bool) -> bool {
-        let amount = if pressed {
-            1.0
-        } else {
-            0.0
-        };
+        let amount = if pressed { 1.0 } else { 0.0 };
         match key {
             KeyCode::KeyW | KeyCode::ArrowUp => {
                 self.amount_forward = amount;
@@ -138,10 +136,14 @@ impl CameraController {
                 self.amount_down = amount;
                 true
             }
+            KeyCode::KeyQ if pressed => {
+                self.axis_locked = !self.axis_locked;
+                true
+            }
             _ => false,
         }
     }
-    
+
     pub fn handle_scroll(&mut self, delta: &MouseScrollDelta) {
         let amount = match delta {
             MouseScrollDelta::PixelDelta(amount) => amount.y as f32,
@@ -169,7 +171,12 @@ impl CameraController {
 
         let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
-        let forward = Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
+
+        let forward = if self.axis_locked {
+            Vec3::new(yaw_cos, 0.0, yaw_sin).normalize()
+        } else {
+            Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos).normalize()
+        };
 
         let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalize();
         camera.position += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;

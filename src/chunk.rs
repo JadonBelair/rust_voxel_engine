@@ -1,7 +1,7 @@
 use glam::{DVec3, IVec3, UVec3, Vec3};
 use noise::NoiseFn;
 // use rand::Rng;
-use wgpu::{util::DeviceExt, RenderPass};
+use wgpu::{RenderPass, util::DeviceExt};
 
 use crate::frustum::{Aabb, Frustum};
 
@@ -46,7 +46,8 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    const NOISE_SCALE: f64 = 30.0;
+    const CAVE_NOISE_SCALE: f64 = 30.0;
+    const HILL_NOISE_SCALE: f64 = 50.0;
 
     pub fn new(position: IVec3) -> Self {
         let world_position = position.as_vec3() * CHUNK_SIZE as f32;
@@ -69,24 +70,30 @@ impl Chunk {
                     let mut noise_pos = DVec3::new(
                         voxel_position.x as f64,
                         voxel_position.y as f64,
-                        voxel_position.z as f64
+                        voxel_position.z as f64,
                     );
                     noise_pos += 0.5;
-                    noise_pos /= Self::NOISE_SCALE;
 
                     if world_position.y < 0.0 {
-                        let val = ((noise.get([noise_pos.x, noise_pos.y, noise_pos.z]) + 1.0) / 2.0 * CHUNK_SIZE as f64) as u32;
+                        noise_pos /= Self::CAVE_NOISE_SCALE;
+                        let val = ((noise.get([noise_pos.x, noise_pos.y, noise_pos.z]) + 1.0) / 2.0
+                            * CHUNK_SIZE as f64) as u32;
                         if val > 16 {
-                            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] = Block::DIRT;
+                            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] =
+                                Block::DIRT;
                             chunk.is_empty = false;
                         }
                     } else {
-                        let val = ((noise.get([noise_pos.x, noise_pos.z]) + 1.0) / 2.0 * CHUNK_SIZE as f64) as u32;
+                        noise_pos /= Self::HILL_NOISE_SCALE;
+                        let val = ((noise.get([noise_pos.x, noise_pos.z]) + 1.0) / 2.0
+                            * CHUNK_SIZE as f64) as u32;
                         if val == voxel_position.y as u32 {
-                            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] = Block::GRASS;
+                            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] =
+                                Block::GRASS;
                             chunk.is_empty = false;
                         } else if val > voxel_position.y as u32 {
-                            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] = Block::DIRT;
+                            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] =
+                                Block::DIRT;
                             chunk.is_empty = false;
                         }
                     }
@@ -97,17 +104,43 @@ impl Chunk {
         chunk
     }
 
-    pub fn generate_mesh(&self) -> ChunkMeshData {
+    pub fn set_block(&mut self, position: IVec3, block: Block) -> bool {
+        let index =
+            CHUNK_SIZE * CHUNK_SIZE * position.z as usize
+            + CHUNK_SIZE * position.y as usize
+            + position.x as usize;
+
+        if self.blocks[index] != block {
+            self.blocks[index] = block;
+            self.is_empty = self.blocks.iter().all(|b| *b == Block::AIR);
+            return true;
+        }
+
+
+        return false;
+    }
+
+    pub fn generate_mesh(&self) -> Option<ChunkMeshData> {
+        if self.is_empty {
+            return None;
+        }
+
         let mut temp_vertices = Vec::new();
-        let mut temp_indices= Vec::new();
+        let mut temp_indices = Vec::new();
 
         let mut vertex_count = 0;
         #[allow(unused)]
         let mut index_count = 0;
 
         const CUBE_VERTICES: [UVec3; 8] = [
-            UVec3::new(0, 0, 0), UVec3::new(1, 0, 0), UVec3::new(1, 1, 0), UVec3::new(0, 1, 0),
-            UVec3::new(0, 0, 1), UVec3::new(1, 0, 1), UVec3::new(1, 1, 1), UVec3::new(0, 1, 1)
+            UVec3::new(0, 0, 0),
+            UVec3::new(1, 0, 0),
+            UVec3::new(1, 1, 0),
+            UVec3::new(0, 1, 0),
+            UVec3::new(0, 0, 1),
+            UVec3::new(1, 0, 1),
+            UVec3::new(1, 1, 1),
+            UVec3::new(0, 1, 1),
         ];
 
         const FACE_INDICES: [[u32; 4]; 6] = [
@@ -125,9 +158,11 @@ impl Chunk {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
                     let block = self.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x];
-                    if block == Block::AIR { continue; }
+                    if block == Block::AIR {
+                        continue;
+                    }
 
-                    let shade = 1.0;//Vec3::splat(rng.random_range((0.8)..(1.2)));
+                    let shade = 1.0; //Vec3::splat(rng.random_range((0.8)..(1.2)));
 
                     for face in 0..6 {
                         let mut nx = x as i32;
@@ -141,26 +176,36 @@ impl Chunk {
                             3 => nx += 1,
                             4 => ny -= 1,
                             5 => ny += 1,
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         }
 
                         let mut render_face = true;
 
-                        if nx >= 0 && nx < CHUNK_SIZE as i32 &&
-                            ny >= 0 && ny < CHUNK_SIZE as i32 &&
-                            nz >= 0 && nz < CHUNK_SIZE as i32 {
-
-                            if self.blocks[CHUNK_SIZE * CHUNK_SIZE * nz as usize + CHUNK_SIZE * ny as usize + nx as usize] != Block::AIR {
+                        if nx >= 0
+                            && nx < CHUNK_SIZE as i32
+                            && ny >= 0
+                            && ny < CHUNK_SIZE as i32
+                            && nz >= 0
+                            && nz < CHUNK_SIZE as i32
+                        {
+                            if self.blocks[CHUNK_SIZE * CHUNK_SIZE * nz as usize
+                                + CHUNK_SIZE * ny as usize
+                                + nx as usize]
+                                != Block::AIR
+                            {
                                 render_face = false;
                             }
                         }
 
-                        if !render_face { continue; }
+                        if !render_face {
+                            continue;
+                        }
 
                         let base_index = vertex_count as u32;
 
                         for i in 0..4 {
-                            let position = CUBE_VERTICES[FACE_INDICES[face][i] as usize] + UVec3::new(x as u32, y as u32, z as u32);
+                            let position = CUBE_VERTICES[FACE_INDICES[face][i] as usize]
+                                + UVec3::new(x as u32, y as u32, z as u32);
                             let color = if block == Block::DIRT {
                                 Vec3::new(0.42, 0.24, 0.03)
                             } else if block == Block::GRASS {
@@ -170,9 +215,7 @@ impl Chunk {
                             } * shade;
 
                             let position =
-                                (position.x << 12) |
-                                (position.y <<  6) |
-                                (position.z <<  0);
+                                (position.x << 12) | (position.y << 6) | (position.z << 0);
 
                             let normal_position = ((face as u32) << 18) | position;
 
@@ -197,30 +240,29 @@ impl Chunk {
             }
         }
 
-        ChunkMeshData {
+        Some(ChunkMeshData {
             vertices: temp_vertices,
             indices: temp_indices,
-        }
+        })
     }
 
     pub fn load_mesh(&mut self, mesh_data: ChunkMeshData, device: &wgpu::Device) {
-        if mesh_data.vertices.len() == 0 || mesh_data.indices.len() == 0 { return }
+        if mesh_data.vertices.len() == 0 || mesh_data.indices.len() == 0 {
+            self.mesh = None;
+            return;
+        }
 
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(mesh_data.vertices.as_slice()),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(mesh_data.vertices.as_slice()),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
 
-        let index_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(mesh_data.indices.as_slice()),
-                usage: wgpu::BufferUsages::INDEX,
-            }
-        );
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(mesh_data.indices.as_slice()),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
         self.mesh = Some(ChunkMesh {
             vertex_count: mesh_data.vertices.len() as u32,
@@ -234,9 +276,14 @@ impl Chunk {
         if let Some(mesh) = &self.mesh {
             if frustum.contains_aabb(&self.bounding_box) {
                 // render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, bytemuck::cast_slice(&self.model_matrix.to_cols_array_2d()));
-                render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, bytemuck::cast_slice(&self.world_position.to_array()));
+                render_pass.set_push_constants(
+                    wgpu::ShaderStages::VERTEX,
+                    0,
+                    bytemuck::cast_slice(&self.world_position.to_array()),
+                );
                 render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass
+                    .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
 
                 return true;
@@ -244,6 +291,27 @@ impl Chunk {
         }
 
         return false;
+    }
+}
+
+impl Chunk {
+    pub fn world_to_chunk_pos(world_position: IVec3) -> IVec3 {
+        (world_position.as_vec3() / CHUNK_SIZE as f32).floor().as_ivec3()
+    }
+
+    pub fn world_to_local_pos(world_position: IVec3) -> IVec3 {
+        let mut pos = world_position % CHUNK_SIZE as i32;
+        if pos.x < 0 {
+            pos.x += CHUNK_SIZE as i32;
+        }
+        if pos.y < 0 {
+            pos.y += CHUNK_SIZE as i32;
+        }
+        if pos.z < 0 {
+            pos.z += CHUNK_SIZE as i32;
+        }
+
+        pos
     }
 }
 

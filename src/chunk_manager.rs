@@ -1,14 +1,21 @@
-use std::{collections::{HashMap, VecDeque}, sync::mpsc};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::mpsc,
+};
 
 use glam::{IVec3, Vec3};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::{chunk::{Block, Chunk, CHUNK_SIZE}, frustum::Frustum};
+use crate::{
+    chunk::{Block, CHUNK_SIZE, Chunk},
+    frustum::Frustum,
+};
 
 pub struct ChunkManager {
     pub chunk_map: HashMap<IVec3, Chunk>,
     pub chunk_data_load_queue: VecDeque<IVec3>,
     pub chunk_mesh_load_queue: VecDeque<IVec3>,
+    pub chunk_mesh_reload_queue: HashSet<IVec3>,
     pub render_distance: i32,
 }
 
@@ -18,50 +25,49 @@ impl ChunkManager {
             chunk_map: HashMap::new(),
             chunk_data_load_queue: VecDeque::new(),
             chunk_mesh_load_queue: VecDeque::new(),
-            render_distance
+            chunk_mesh_reload_queue: HashSet::new(),
+            render_distance,
         }
-    }
-
-    fn get_chunk_position(&self, position: IVec3) -> IVec3 {
-        (position.as_vec3() / CHUNK_SIZE as f32).floor().as_ivec3()
-    }
-
-    fn get_inner_position(&self, position: IVec3) -> IVec3 {
-        let mut pos = position % CHUNK_SIZE as i32;
-        if pos.x < 0 {
-            pos.x += CHUNK_SIZE as i32;
-        }
-        if pos.y < 0 {
-            pos.y += CHUNK_SIZE as i32;
-        }
-        if pos.z < 0 {
-            pos.z += CHUNK_SIZE as i32;
-        }
-
-        pos
     }
 
     pub fn get_block(&self, pos: IVec3) -> Option<Block> {
-        let chunk_pos = self.get_chunk_position(pos);
+        let chunk_pos = Chunk::world_to_chunk_pos(pos);
 
         if let Some(chunk) = self.chunk_map.get(&chunk_pos) {
-            let inner_pos = self.get_inner_position(pos);
+            let inner_pos = Chunk::world_to_local_pos(pos);
 
-            return Some(chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * inner_pos.z as usize + CHUNK_SIZE * inner_pos.y as usize + inner_pos.x as usize]);
+            return Some(
+                chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * inner_pos.z as usize
+                    + CHUNK_SIZE * inner_pos.y as usize
+                    + inner_pos.x as usize],
+            );
         }
 
         None
     }
 
-    pub fn ray_cast(&self, origin: Vec3, pitch: f32, yaw: f32, max_distance: f32) -> Option<(IVec3, IVec3)> {
+    pub fn set_block(&mut self, position: IVec3, block: Block) {
+        let chunk_pos = Chunk::world_to_chunk_pos(position);
+        let inner_pos = Chunk::world_to_local_pos(position);
+
+        if let Some(chunk) = self.chunk_map.get_mut(&chunk_pos) {
+            if chunk.set_block(inner_pos, block) {
+                self.chunk_mesh_reload_queue.insert(chunk_pos);
+            }
+        }
+    }
+
+    pub fn ray_cast(
+        &self,
+        origin: Vec3,
+        pitch: f32,
+        yaw: f32,
+        max_distance: f32,
+    ) -> Option<(IVec3, IVec3)> {
         let (yaw_sin, yaw_cos) = yaw.sin_cos();
         let (pitch_sin, pitch_cos) = pitch.sin_cos();
 
-        let direction = Vec3::new(
-            yaw_cos * pitch_cos,
-            pitch_sin,
-            yaw_sin * pitch_cos,
-        );
+        let direction = Vec3::new(yaw_cos * pitch_cos, pitch_sin, yaw_sin * pitch_cos);
 
         let step = direction.signum();
         let t_delta = (1.0 / direction).abs().min(Vec3::splat(f32::MAX));
@@ -109,19 +115,6 @@ impl ChunkManager {
         None
     }
 
-    pub fn set_block(&mut self, position: IVec3, block: Block) {
-        let chunk_pos = self.get_chunk_position(position);
-        let inner_pos = self.get_inner_position(position);
-
-        // println!("{chunk_pos} {inner_pos}");
-
-        if let Some(chunk) = self.chunk_map.get_mut(&chunk_pos) {
-            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * inner_pos.z as usize + CHUNK_SIZE * inner_pos.y as usize + inner_pos.x as usize] = block;
-            chunk.mesh = None;
-            self.chunk_mesh_load_queue.push_front(chunk_pos);
-        }
-    }
-
     pub fn build_chunk_data_in_queue(&mut self, amount: usize) {
         let (tx, rx) = mpsc::channel();
         (0..amount)
@@ -143,14 +136,32 @@ impl ChunkManager {
 
     pub fn build_chunk_mesh_in_queue(&mut self, amount: usize, device: &wgpu::Device) {
         let (tx, rx) = mpsc::channel();
-        (0..amount)
+
+        // let reload_tasks = self
+        //     .chunk_mesh_reload_queue
+        //     .drain()
+        //     // .take(amount)
+        //     .collect::<Vec<IVec3>>();
+
+        let reload_tasks = (0..amount)
+            .filter_map(|_| {
+                if let Some(&pos) = self.chunk_mesh_reload_queue.iter().next() {
+                    self.chunk_mesh_reload_queue.remove(&pos);
+                    Some(pos)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<IVec3>>();
+
+        (0..amount.saturating_sub(reload_tasks.len()))
             .filter_map(|_| self.chunk_mesh_load_queue.pop_front())
+            .chain(reload_tasks)
             .collect::<Vec<IVec3>>()
             .into_par_iter()
             .for_each_with(tx, |s, position| {
                 let mesh = if let Some(chunk) = self.chunk_map.get(&position) {
-                    let mesh = chunk.generate_mesh();
-                    Some(mesh)
+                    chunk.generate_mesh()
                 } else {
                     None
                 };
@@ -159,57 +170,67 @@ impl ChunkManager {
             });
 
         for (pos, mesh) in rx {
-            match mesh {
-                Some(mesh) => if let Some(chunk) = self.chunk_map.get_mut(&pos) {
+            if let Some(chunk) = self.chunk_map.get_mut(&pos) {
+                if let Some(mesh) = mesh {
                     chunk.load_mesh(mesh, device);
-                },
-                None => self.chunk_data_load_queue.push_back(pos),
+                } else if chunk.is_empty {
+                    chunk.mesh = None;
+                }
+            } else {
+                self.chunk_data_load_queue.push_back(pos);
             }
         }
     }
 
     pub fn update_around(&mut self, position: IVec3) {
         self.chunk_data_load_queue.retain(|chunk_position| {
-            chunk_position.x <= position.x + self.render_distance as i32 &&
-                chunk_position.x >= position.x - self.render_distance as i32 &&
-                chunk_position.y <= position.y + self.render_distance as i32 &&
-                chunk_position.y >= position.y - self.render_distance as i32 &&
-                chunk_position.z <= position.z + self.render_distance as i32 &&
-                chunk_position.z >= position.z - self.render_distance as i32
+            chunk_position.x <= position.x + self.render_distance as i32
+                && chunk_position.x >= position.x - self.render_distance as i32
+                && chunk_position.y <= position.y + self.render_distance as i32
+                && chunk_position.y >= position.y - self.render_distance as i32
+                && chunk_position.z <= position.z + self.render_distance as i32
+                && chunk_position.z >= position.z - self.render_distance as i32
         });
 
         self.chunk_mesh_load_queue.retain(|chunk_position| {
-            chunk_position.x <= position.x + self.render_distance as i32 &&
-                chunk_position.x >= position.x - self.render_distance as i32 &&
-                chunk_position.y <= position.y + self.render_distance as i32 &&
-                chunk_position.y >= position.y - self.render_distance as i32 &&
-                chunk_position.z <= position.z + self.render_distance as i32 &&
-                chunk_position.z >= position.z - self.render_distance as i32
+            chunk_position.x <= position.x + self.render_distance as i32
+                && chunk_position.x >= position.x - self.render_distance as i32
+                && chunk_position.y <= position.y + self.render_distance as i32
+                && chunk_position.y >= position.y - self.render_distance as i32
+                && chunk_position.z <= position.z + self.render_distance as i32
+                && chunk_position.z >= position.z - self.render_distance as i32
         });
 
         self.chunk_map.retain(|_, chunk| {
-            chunk.position.x <= position.x + self.render_distance as i32 &&
-                chunk.position.x >= position.x - self.render_distance as i32 &&
-                chunk.position.y <= position.y + self.render_distance as i32 &&
-                chunk.position.y >= position.y - self.render_distance as i32 &&
-                chunk.position.z <= position.z + self.render_distance as i32 &&
-                chunk.position.z >= position.z - self.render_distance as i32
+            chunk.position.x <= position.x + self.render_distance as i32
+                && chunk.position.x >= position.x - self.render_distance as i32
+                && chunk.position.y <= position.y + self.render_distance as i32
+                && chunk.position.y >= position.y - self.render_distance as i32
+                && chunk.position.z <= position.z + self.render_distance as i32
+                && chunk.position.z >= position.z - self.render_distance as i32
         });
 
         for x in -self.render_distance..=self.render_distance {
             for y in -self.render_distance..=self.render_distance {
                 for z in -self.render_distance..=self.render_distance {
                     let chunk_pos = IVec3::new(x, y, z) + position;
-                    if !self.chunk_map.contains_key(&chunk_pos) &&
-                        !self.chunk_data_load_queue.contains(&chunk_pos) {
-                            self.chunk_data_load_queue.push_back(chunk_pos);
-
+                    if !self.chunk_map.contains_key(&chunk_pos)
+                        && !self.chunk_data_load_queue.contains(&chunk_pos)
+                    {
+                        self.chunk_data_load_queue.push_back(chunk_pos);
                     }
                 }
             }
         }
 
-        self.chunk_data_load_queue.make_contiguous().sort_by(|a, b| (a-position).length_squared().partial_cmp(&(b-position).length_squared()).unwrap());
+        self.chunk_data_load_queue
+            .make_contiguous()
+            .sort_by(|a, b| {
+                (a - position)
+                    .length_squared()
+                    .partial_cmp(&(b - position).length_squared())
+                    .unwrap()
+            });
     }
 
     pub fn render(&self, render_pass: &mut wgpu::RenderPass, frustum: &Frustum) {
