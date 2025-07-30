@@ -4,7 +4,7 @@ use camera::{Camera, CameraController, CameraUniform, Projection};
 use chunk::{Vertex, CHUNK_SIZE};
 use chunk_manager::ChunkManager;
 use frustum::Frustum;
-use glam::Vec3;
+use glam::{IVec3, Vec3};
 use wgpu::{util::DeviceExt, PresentMode};
 use winit::{
     application::ApplicationHandler,
@@ -89,7 +89,7 @@ impl State {
                 label: None,
                 required_features: wgpu::Features::POLYGON_MODE_LINE | wgpu::Features::POLYGON_MODE_POINT | wgpu::Features::PUSH_CONSTANTS,
                 required_limits: wgpu::Limits {
-                    max_push_constant_size: 64,
+                    max_push_constant_size: 12,
                     ..wgpu::Limits::downlevel_defaults()
                 },
                 memory_hints: Default::default(),
@@ -166,7 +166,7 @@ impl State {
                 bind_group_layouts: &[&camera_bind_group_layout],
                 push_constant_ranges: &[wgpu::PushConstantRange {
                     stages: wgpu::ShaderStages::VERTEX,
-                    range: 0..std::mem::size_of::<[[f32; 4]; 4]>() as u32,
+                    range: 0..std::mem::size_of::<[f32; 3]>() as u32,
                 }],
             });
 
@@ -214,8 +214,8 @@ impl State {
             cache: None,
         });
 
-        let mut chunk_manager = ChunkManager::new(12);
-        chunk_manager.update_around(Vec3::ZERO);
+        let mut chunk_manager = ChunkManager::new(10);
+        chunk_manager.update_around(IVec3::ZERO);
 
         let (depth_texture, depth_texture_view) = create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));
 
@@ -280,7 +280,7 @@ impl State {
         let new_chunk = (self.camera.position / CHUNK_SIZE as f32).floor();
 
         if prev_chunk != new_chunk {
-            self.chunk_manager.update_around(new_chunk);
+            self.chunk_manager.update_around(new_chunk.as_ivec3());
         }
 
         self.camera_uniform.update_view_proj(&self.camera, &self.projection);

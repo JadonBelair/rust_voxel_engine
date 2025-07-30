@@ -1,11 +1,11 @@
-use glam::{DVec3, Mat4, UVec3, Vec3};
+use glam::{DVec3, IVec3, UVec3, Vec3};
 use noise::NoiseFn;
 use rand::Rng;
 use wgpu::{util::DeviceExt, RenderPass};
 
 use crate::frustum::{Aabb, Frustum};
 
-const DO_3D: bool = true;
+// const DO_3D: bool = true;
 pub const CHUNK_SIZE: usize = 32;
 
 #[repr(C)]
@@ -37,8 +37,8 @@ pub enum Block {
 }
 
 pub struct Chunk {
-    pub position: Vec3,
-    pub model_matrix: Mat4,
+    pub position: IVec3,
+    pub world_position: Vec3,
     pub blocks: [Block; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
     pub is_empty: bool,
     pub bounding_box: Aabb,
@@ -48,15 +48,15 @@ pub struct Chunk {
 impl Chunk {
     const NOISE_SCALE: f64 = 30.0;
 
-    pub fn new(position: Vec3) -> Self {
-        let world_space = position * CHUNK_SIZE as f32;
+    pub fn new(position: IVec3) -> Self {
+        let world_position = position.as_vec3() * CHUNK_SIZE as f32;
 
         let mut chunk = Self {
             position,
-            model_matrix: Mat4::from_translation(world_space),
+            world_position,
             blocks: [Block::AIR; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
             is_empty: true,
-            bounding_box: Aabb::new(world_space, world_space + CHUNK_SIZE as f32),
+            bounding_box: Aabb::new(world_position, world_position + CHUNK_SIZE as f32),
             mesh: None,
         };
 
@@ -65,7 +65,7 @@ impl Chunk {
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
-                    let voxel_position = Vec3::new(x as f32, y as f32, z as f32) + world_space;
+                    let voxel_position = Vec3::new(x as f32, y as f32, z as f32) + world_position;
                     let mut noise_pos = DVec3::new(
                         voxel_position.x as f64,
                         voxel_position.y as f64,
@@ -74,10 +74,10 @@ impl Chunk {
                     noise_pos += 0.5;
                     noise_pos /= Self::NOISE_SCALE;
 
-                    if DO_3D {
+                    if world_position.y < 0.0 {
                         let val = ((noise.get([noise_pos.x, noise_pos.y, noise_pos.z]) + 1.0) / 2.0 * CHUNK_SIZE as f64) as u32;
                         if val > 16 {
-                            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] = Block::GRASS;
+                            chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] = Block::DIRT;
                             chunk.is_empty = false;
                         }
                     } else {
@@ -162,7 +162,7 @@ impl Chunk {
                         for i in 0..4 {
                             let position = CUBE_VERTICES[FACE_INDICES[face][i] as usize] + UVec3::new(x as u32, y as u32, z as u32);
                             let color = if block == Block::DIRT {
-                                Vec3::new(0.36, 0.25, 0.125)
+                                Vec3::new(0.42, 0.24, 0.03)
                             } else if block == Block::GRASS {
                                 Vec3::new(0.0, 0.57, 0.0)
                             } else {
@@ -230,15 +230,20 @@ impl Chunk {
         });
     }
 
-    pub fn render(&self, render_pass: &mut RenderPass, frustum: &Frustum) {
+    pub fn render(&self, render_pass: &mut RenderPass, frustum: &Frustum) -> bool {
         if let Some(mesh) = &self.mesh {
             if frustum.contains_aabb(&self.bounding_box) {
-                render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, bytemuck::cast_slice(&self.model_matrix.to_cols_array_2d()));
+                // render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, bytemuck::cast_slice(&self.model_matrix.to_cols_array_2d()));
+                render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, bytemuck::cast_slice(&self.world_position.to_array()));
                 render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
                 render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..mesh.index_count, 0, 0..1);
+
+                return true;
             }
         }
+
+        return false;
     }
 }
 
