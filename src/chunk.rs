@@ -11,14 +11,14 @@ pub const CHUNK_SIZE: usize = 32;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    pub position: UVec3,
-    pub normal: u32,
+    /// mapped to 0b0000000000000nnnxxxxxxxxyyyyyyyyzzzzzzzz
+    pub normal_position: u32,
     pub color: Vec3,
 }
 
 impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![0 => Uint32x3, 1 => Uint32, 2 => Float32x3];
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Uint32, 1 => Float32x3];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -169,9 +169,15 @@ impl Chunk {
                                 unreachable!();
                             } * shade;
 
+                            let position =
+                                (position.x << 16) |
+                                (position.y <<  8) |
+                                (position.z <<  0);
+
+                            let normal_position = ((face as u32) << 24) | position;
+
                             let v = Vertex {
-                                position,
-                                normal: face as u32,
+                                normal_position,
                                 color,
                             };
 

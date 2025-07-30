@@ -119,7 +119,7 @@ impl State {
             present_mode,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 3,
+            desired_maximum_frame_latency: 2,
         };
 
         let camera = Camera::new(Vec3::new(0.0, CHUNK_SIZE as f32, 0.0), 0.0, 0.0);
@@ -214,7 +214,7 @@ impl State {
             cache: None,
         });
 
-        let mut chunk_manager = ChunkManager::new(10);
+        let mut chunk_manager = ChunkManager::new(12);
         chunk_manager.update_around(Vec3::ZERO);
 
         let (depth_texture, depth_texture_view) = create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));

@@ -1,7 +1,7 @@
 struct VertexInput {
-    @location(0) position: vec3<u32>,
-    @location(1) normal: u32,
-    @location(2) color: vec3<f32>,
+    @location(0) normal_position: u32,
+    // @location(1) normal: u32,
+    @location(1) color: vec3<f32>,
 };
 
 struct Camera {
@@ -35,13 +35,20 @@ struct VertexOutput {
 fn vs_main(
     vertex: VertexInput,
 ) -> VertexOutput {
-	let world_position = model * vec4<f32>(vec3<f32>(vertex.position), 1.0);
+	let position: vec3<u32> = vec3<u32>(
+		(vertex.normal_position >> 16) & 0xFF,
+		(vertex.normal_position >>  8) & 0xFF,
+		(vertex.normal_position >>  0) & 0xFF,
+	);
+	let world_position = model * vec4<f32>(vec3<f32>(position), 1.0);
+
+	let normal_index = (vertex.normal_position >> 24) & 0x07;
 
     var out: VertexOutput;
     out.color = vertex.color;
     out.clip_position = camera.view_proj * world_position;
     out.frag_position = world_position.xyz;
-	out.normal = NORMALS[vertex.normal];
+	out.normal = NORMALS[normal_index];
 	out.camera_pos = camera.view_pos.xyz;
     return out;
 }
