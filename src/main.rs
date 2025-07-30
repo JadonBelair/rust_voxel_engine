@@ -1,14 +1,14 @@
 use std::{sync::Arc, time::Instant};
 
 use camera::{Camera, CameraController, CameraUniform, Projection};
-use chunk::{Vertex, CHUNK_SIZE};
+use chunk::{Block, Vertex, CHUNK_SIZE};
 use chunk_manager::ChunkManager;
 use frustum::Frustum;
 use glam::{IVec3, Vec3};
 use wgpu::{util::DeviceExt, PresentMode};
 use winit::{
     application::ApplicationHandler,
-    event::{DeviceEvent, KeyEvent, WindowEvent},
+    event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window, WindowId},
@@ -255,6 +255,17 @@ impl State {
         }
     }
 
+    pub fn handle_mouse_button(&mut self, _event_loop: &ActiveEventLoop, button: MouseButton, is_pressed: bool) {
+        match (button, is_pressed) {
+            (MouseButton::Left, true) => {
+                if let Some((pos, _normal)) = self.chunk_manager.ray_cast(self.camera.position, self.camera.pitch, self.camera.yaw, 6.0) {
+                    self.chunk_manager.set_block(pos, Block::AIR);
+                }
+            },
+            _ => ()
+        }
+    }
+
     pub fn handle_key(&mut self, _event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
         if !self.camera_controller.handle_key(code, is_pressed) {
             match (code, is_pressed) {
@@ -431,6 +442,11 @@ impl ApplicationHandler<State> for App {
                 ..
             } => state.handle_key(event_loop, code, key_state.is_pressed()),
             WindowEvent::MouseWheel { delta, .. } => state.camera_controller.handle_scroll(&delta),
+            WindowEvent::MouseInput {
+                state: mouse_state,
+                button,
+                ..
+            } => state.handle_mouse_button(event_loop, button, mouse_state.is_pressed()),
             _ => (),
         }
     }

@@ -127,7 +127,7 @@ impl Chunk {
                     let block = self.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x];
                     if block == Block::AIR { continue; }
 
-                    let shade = Vec3::splat(rng.random_range((0.8)..(1.2)));
+                    let shade = 1.0;//Vec3::splat(rng.random_range((0.8)..(1.2)));
 
                     for face in 0..6 {
                         let mut nx = x as i32;
