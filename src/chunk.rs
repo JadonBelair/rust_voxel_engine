@@ -11,7 +11,7 @@ pub const CHUNK_SIZE: usize = 32;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    /// mapped to 0b0000000000000nnnxxxxxxxxyyyyyyyyzzzzzzzz
+    /// mapped to 0b0000000000000000000nnnxxxxxxyyyyyyzzzzzz
     pub normal_position: u32,
     pub color: Vec3,
 }
@@ -170,11 +170,11 @@ impl Chunk {
                             } * shade;
 
                             let position =
-                                (position.x << 16) |
-                                (position.y <<  8) |
+                                (position.x << 12) |
+                                (position.y <<  6) |
                                 (position.z <<  0);
 
-                            let normal_position = ((face as u32) << 24) | position;
+                            let normal_position = ((face as u32) << 18) | position;
 
                             let v = Vertex {
                                 normal_position,

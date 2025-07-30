@@ -36,13 +36,13 @@ fn vs_main(
     vertex: VertexInput,
 ) -> VertexOutput {
 	let position: vec3<u32> = vec3<u32>(
-		(vertex.normal_position >> 16) & 0xFF,
-		(vertex.normal_position >>  8) & 0xFF,
-		(vertex.normal_position >>  0) & 0xFF,
+		(vertex.normal_position >> 12) & 0x3F,
+		(vertex.normal_position >>  6) & 0x3F,
+		(vertex.normal_position >>  0) & 0x3F,
 	);
 	let world_position = model * vec4<f32>(vec3<f32>(position), 1.0);
 
-	let normal_index = (vertex.normal_position >> 24) & 0x07;
+	let normal_index = (vertex.normal_position >> 18) & 0x07;
 
     var out: VertexOutput;
     out.color = vertex.color;

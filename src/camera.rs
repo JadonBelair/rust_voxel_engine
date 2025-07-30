@@ -167,31 +167,22 @@ impl CameraController {
     pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {
         let dt = dt.as_secs_f32();
 
-        // Move forward/backward and left/right
         let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
-        let scrollward = Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
+        let forward = Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalize();
 
-        // let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalize();
         let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalize();
-        camera.position += scrollward * (self.amount_forward - self.amount_backward) * self.speed * dt;
+        camera.position += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
         camera.position += right * (self.amount_right - self.amount_left) * self.speed * dt;
 
-        // Move up/down. Since we don't use roll, we can just
-        // modify the y coordinate directly.
         camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
 
-        // Rotate
         camera.yaw += self.rotate_horizontal.to_radians() * self.sensitivity;
         camera.pitch += -self.rotate_vertical.to_radians() * self.sensitivity;
 
-        // If process_mouse isn't called every frame, these values
-        // will not get set to zero, and the camera will rotate
-        // when moving in a non cardinal direction.
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;
 
-        // Keep the camera's angle from going too high/low.
         if camera.pitch < (-89.0_f32).to_radians() {
             camera.pitch = (-89.0_f32).to_radians()
         } else if camera.pitch > (89.0_f32).to_radians() {
