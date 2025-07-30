@@ -1,5 +1,5 @@
 struct VertexInput {
-    @location(0) position: vec3<f32>,
+    @location(0) position: vec3<u32>,
     @location(1) normal: u32,
     @location(2) color: vec3<f32>,
 };
@@ -35,7 +35,7 @@ struct VertexOutput {
 fn vs_main(
     vertex: VertexInput,
 ) -> VertexOutput {
-	let world_position = model * vec4<f32>(vertex.position, 1.0);
+	let world_position = model * vec4<f32>(vec3<f32>(vertex.position), 1.0);
 
     var out: VertexOutput;
     out.color = vertex.color;

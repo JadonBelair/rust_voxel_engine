@@ -1,4 +1,4 @@
-use glam::{DVec3, Mat4, Vec3};
+use glam::{DVec3, Mat4, UVec3, Vec3};
 use noise::NoiseFn;
 use rand::Rng;
 use wgpu::{util::DeviceExt, RenderPass};
@@ -11,14 +11,14 @@ pub const CHUNK_SIZE: usize = 32;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    pub position: Vec3,
+    pub position: UVec3,
     pub normal: u32,
     pub color: Vec3,
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Uint32, 2 => Float32x3];
+        wgpu::vertex_attr_array![0 => Uint32x3, 1 => Uint32, 2 => Float32x3];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -105,19 +105,10 @@ impl Chunk {
         #[allow(unused)]
         let mut index_count = 0;
 
-        const CUBE_VERTICES: [Vec3; 8] = [
-            Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0), Vec3::new(1.0, 1.0, 0.0), Vec3::new(0.0, 1.0, 0.0),
-            Vec3::new(0.0, 0.0, 1.0), Vec3::new(1.0, 0.0, 1.0), Vec3::new(1.0, 1.0, 1.0), Vec3::new(0.0, 1.0, 1.0)
+        const CUBE_VERTICES: [UVec3; 8] = [
+            UVec3::new(0, 0, 0), UVec3::new(1, 0, 0), UVec3::new(1, 1, 0), UVec3::new(0, 1, 0),
+            UVec3::new(0, 0, 1), UVec3::new(1, 0, 1), UVec3::new(1, 1, 1), UVec3::new(0, 1, 1)
         ];
-
-        // const FACE_NORMALS: [Vec3; 6] = [
-        //     Vec3::new( 0.0,  0.0, -1.0), // Front
-        //     Vec3::new( 0.0,  0.0,  1.0), // Back
-        //     Vec3::new(-1.0,  0.0,  0.0), // Left
-        //     Vec3::new( 1.0,  0.0,  0.0), // Right
-        //     Vec3::new( 0.0, -1.0,  0.0), // Bottom
-        //     Vec3::new( 0.0,  1.0,  0.0), // Top
-        // ];
 
         const FACE_INDICES: [[u32; 4]; 6] = [
             [0, 1, 2, 3],
@@ -169,8 +160,7 @@ impl Chunk {
                         let base_index = vertex_count as u32;
 
                         for i in 0..4 {
-                            let position = CUBE_VERTICES[FACE_INDICES[face][i] as usize] + Vec3::new(x as f32, y as f32, z as f32); // + (self.position * CHUNK_SIZE as f32);
-                            // let normal = FACE_NORMALS[face];
+                            let position = CUBE_VERTICES[FACE_INDICES[face][i] as usize] + UVec3::new(x as u32, y as u32, z as u32);
                             let color = if block == Block::DIRT {
                                 Vec3::new(0.36, 0.25, 0.125)
                             } else if block == Block::GRASS {

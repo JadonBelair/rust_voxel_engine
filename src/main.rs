@@ -341,7 +341,6 @@ impl State {
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             let frustum = Frustum::from_camera(&self.camera, &self.projection);
             self.chunk_manager.render(&mut render_pass, &frustum);
-            // println!("{}", self.camera.position);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
