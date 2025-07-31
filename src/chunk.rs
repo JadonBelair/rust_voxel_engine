@@ -103,8 +103,7 @@ impl Chunk {
     }
 
     pub fn set_block(&mut self, position: IVec3, block: Block) -> bool {
-        let index =
-            CHUNK_SIZE * CHUNK_SIZE * position.z as usize
+        let index = CHUNK_SIZE * CHUNK_SIZE * position.z as usize
             + CHUNK_SIZE * position.y as usize
             + position.x as usize;
 
@@ -113,7 +112,6 @@ impl Chunk {
             self.is_empty = self.blocks.iter().all(|b| *b == Block::AIR);
             return true;
         }
-
 
         return false;
     }
@@ -291,7 +289,9 @@ impl Chunk {
 
 impl Chunk {
     pub fn world_to_chunk_pos(world_position: IVec3) -> IVec3 {
-        (world_position.as_vec3() / CHUNK_SIZE as f32).floor().as_ivec3()
+        (world_position.as_vec3() / CHUNK_SIZE as f32)
+            .floor()
+            .as_ivec3()
     }
 
     pub fn world_to_local_pos(world_position: IVec3) -> IVec3 {

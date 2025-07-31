@@ -4,7 +4,7 @@ use glam::{IVec3, Vec3};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
-    chunk::{Block, Chunk, ChunkMeshData, CHUNK_SIZE},
+    chunk::{Block, CHUNK_SIZE, Chunk, ChunkMeshData},
     frustum::Frustum,
 };
 
@@ -113,7 +113,6 @@ impl ChunkManager {
     }
 
     pub fn build_chunk_data_in_queue(&mut self, amount: usize) {
-        // let (tx, rx) = mpsc::channel();
         let chunks = (0..amount)
             .filter_map(|_| self.chunk_data_load_queue.pop_front())
             .collect::<Vec<IVec3>>()
@@ -147,14 +146,12 @@ impl ChunkManager {
             .chain(reload_tasks)
             .collect::<Vec<IVec3>>();
 
-        let meshes =all_tasks
+        let meshes = all_tasks
             .into_par_iter()
             .filter_map(|position| {
-                if let Some(chunk) = self.chunk_map.get(&position) {
-                    Some((position, chunk.generate_mesh()))
-                } else {
-                    None
-                }
+                self.chunk_map
+                    .get(&position)
+                    .map(|chunk| (position, chunk.generate_mesh()))
             })
             .collect::<Vec<(IVec3, Option<ChunkMeshData>)>>();
 
