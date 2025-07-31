@@ -4,7 +4,7 @@ use glam::{IVec3, Vec3};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
-    chunk::{Block, CHUNK_SIZE, Chunk, ChunkMeshData},
+    chunk::{Block, Chunk, ChunkMeshData, CHUNK_SIZE},
     frustum::Frustum,
 };
 
@@ -57,8 +57,8 @@ impl ChunkManager {
     pub fn ray_cast(
         &self,
         origin: Vec3,
-        pitch: f32,
         yaw: f32,
+        pitch: f32,
         max_distance: f32,
     ) -> Option<(IVec3, IVec3)> {
         let (yaw_sin, yaw_cos) = yaw.sin_cos();
@@ -226,7 +226,12 @@ impl ChunkManager {
                 count += 1;
             }
         }
-
-        println!("drew {count} chunks");
+        println!(
+            "{}/{}\t{}\t{}",
+            count,
+            self.chunk_map.len(),
+            self.chunk_data_load_queue.len(),
+            self.chunk_mesh_load_queue.len() + self.chunk_mesh_reload_queue.len()
+        );
     }
 }

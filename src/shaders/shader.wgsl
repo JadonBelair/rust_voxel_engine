@@ -1,6 +1,6 @@
 struct VertexInput {
     @location(0) normal_position: u32,
-    @location(1) color: vec3<f32>,
+    @location(1) uv: vec2<f32>,
 };
 
 struct Camera {
@@ -24,7 +24,7 @@ const NORMALS: array<vec3<f32>, 6> = array(
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) color: vec3<f32>,
+    @location(0) uv: vec2<f32>,
 	@location(1) normal: vec3<f32>,
 	@location(2) camera_pos: vec3<f32>,
 	@location(3) frag_position: vec3<f32>,
@@ -52,7 +52,7 @@ fn vs_main(
 	let normal_index = (vertex.normal_position >> 18) & 0x07;
 
     var out: VertexOutput;
-    out.color = vertex.color;
+    out.uv = vertex.uv;
     out.clip_position = camera.view_proj * world_position;
     out.frag_position = world_position.xyz;
 	out.normal = NORMALS[normal_index];
@@ -60,12 +60,22 @@ fn vs_main(
     return out;
 }
 
-const BLINN_PHONG: bool = false;
+const BLINN_PHONG: bool = true;
+
+const LIGHT_RANGE: f32 = 15.0;
+const LINEAR: f32 = 1.0 / LIGHT_RANGE;
+const QUADRATIC: f32 = 1.0 / (LIGHT_RANGE * LIGHT_RANGE);
+
+@group(1) @binding(0)
+var t_atlas: texture_2d<f32>;
+@group(1) @binding(1)
+var s_atlas: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+	let color = textureSample(t_atlas, s_atlas, in.uv).xyz;
 	if (BLINN_PHONG) {
-		let ambient = 0.4 * in.color;
+		let ambient = 0.4 * color;
 
 		var light_dir = in.camera_pos - in.frag_position;
 		let distance = length(light_dir);
@@ -75,20 +85,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		let halfway_dir = normalize(light_dir + view_dir);
 
 		let diffuse_strength = max(dot(light_dir, in.normal), 0.0);
-		let diffuse = diffuse_strength * in.color;
+		let diffuse = diffuse_strength * color;
 
 		let specular_strength = 0.3;
 		let reflect_dir = reflect(-light_dir, in.normal);
-		let spec = pow(max(dot(in.normal, halfway_dir), 0.0), 32);
+		let spec = pow(max(dot(in.normal, halfway_dir), 0.0), 16);
 		let specular = specular_strength * spec;
 
-		let attenuation = 1.0 / (1.0 + 0.027 * distance + 0.0028 * (distance * distance));
+		let attenuation = 1.0 / (1.0 + LINEAR * distance + QUADRATIC * (distance * distance));
 		let attenuated_specular = specular * attenuation;
+		let attenuated_diffuse = diffuse * attenuation;
 
-		let result = ambient + diffuse + attenuated_specular;
+		let result = ambient + attenuated_diffuse;// + attenuated_specular;
 		return vec4<f32>(result, 1.0);
 	} else {
-		var result = in.color;
+		var result = color;
 
 		if (in.normal.x != 0.0) {
 			result *= 0.6;

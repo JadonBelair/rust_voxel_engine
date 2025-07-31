@@ -1,4 +1,4 @@
-use glam::{DVec3, IVec3, UVec3, Vec3};
+use glam::{DVec3, IVec3, UVec3, Vec2, Vec3};
 use noise::NoiseFn;
 use wgpu::{RenderPass, util::DeviceExt};
 
@@ -11,12 +11,12 @@ pub const CHUNK_SIZE: usize = 32;
 pub struct Vertex {
     /// mapped to 0b0000000000000000000nnnxxxxxxyyyyyyzzzzzz
     pub normal_position: u32,
-    pub color: Vec3,
+    pub uv: Vec2,
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Uint32, 1 => Float32x3];
+        wgpu::vertex_attr_array![0 => Uint32, 1 => Float32x2];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -32,6 +32,37 @@ pub enum Block {
     AIR = 0,
     DIRT = 1,
     GRASS = 2,
+}
+
+impl Block {
+    const GRASS_UV: [[Vec2; 4]; 3] = [
+        [
+            Vec2::new(0.0, 1.0),
+            Vec2::new(1.0 / 3.0, 1.0),
+            Vec2::new(1.0 / 3.0, 0.0),
+            Vec2::new(0.0, 0.0),
+        ], // Sides
+        [
+            Vec2::new(2.0 / 3.0, 1.0),
+            Vec2::new(1.0, 1.0),
+            Vec2::new(1.0, 0.0),
+            Vec2::new(2.0 / 3.0, 0.0),
+        ], // Bottom
+        [
+            Vec2::new(1.0 / 3.0, 1.0),
+            Vec2::new(2.0 / 3.0, 1.0),
+            Vec2::new(2.0 / 3.0, 0.0),
+            Vec2::new(1.0 / 3.0, 0.0),
+        ], // Top
+    ];
+
+    fn get_uv(&self, side: usize, vertex: usize) -> Vec2 {
+        match self {
+            Self::GRASS => Self::GRASS_UV[side][vertex],
+            Self::DIRT => Self::GRASS_UV[1][vertex],
+            _ => unreachable!(),
+        }
+    }
 }
 
 pub struct Chunk {
@@ -75,7 +106,7 @@ impl Chunk {
                     if world_position.y < 0.0 {
                         noise_pos /= Self::CAVE_NOISE_SCALE;
                         let val = ((noise.get([noise_pos.x, noise_pos.y, noise_pos.z]) + 1.0) / 2.0
-                            * CHUNK_SIZE as f64) as u32;
+                            * (CHUNK_SIZE - 1) as f64) as u32;
                         if val > 16 {
                             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] =
                                 Block::DIRT;
@@ -140,12 +171,21 @@ impl Chunk {
         ];
 
         const FACE_INDICES: [[u32; 4]; 6] = [
-            [0, 1, 2, 3],
-            [5, 4, 7, 6],
-            [4, 0, 3, 7],
-            [1, 5, 6, 2],
-            [4, 5, 1, 0],
-            [3, 2, 6, 7],
+            [0, 1, 2, 3], // Front
+            [5, 4, 7, 6], // Back
+            [4, 0, 3, 7], // Left
+            [1, 5, 6, 2], // Right
+            [4, 5, 1, 0], // Bottom
+            [3, 2, 6, 7], // Top
+        ];
+
+        const FACE_UV_INDEX: [usize; 6] = [
+            0, // Front
+            0, // Back
+            0, // Left
+            0, // Right
+            1, // Bottom
+            2, // Top
         ];
 
         for x in 0..CHUNK_SIZE {
@@ -156,7 +196,7 @@ impl Chunk {
                         continue;
                     }
 
-                    let shade = 1.0;
+                    // let shade = 1.0;
 
                     for face in 0..6 {
                         let mut nx = x as i32;
@@ -200,22 +240,16 @@ impl Chunk {
                         for i in 0..4 {
                             let position = CUBE_VERTICES[FACE_INDICES[face][i] as usize]
                                 + UVec3::new(x as u32, y as u32, z as u32);
-                            let color = if block == Block::DIRT {
-                                Vec3::new(0.42, 0.24, 0.03)
-                            } else if block == Block::GRASS {
-                                Vec3::new(0.0, 0.57, 0.0)
-                            } else {
-                                unreachable!();
-                            } * shade;
 
                             let position =
                                 (position.x << 12) | (position.y << 6) | (position.z << 0);
 
                             let normal_position = ((face as u32) << 18) | position;
+                            let uv = block.get_uv(FACE_UV_INDEX[face], i);
 
                             let v = Vertex {
                                 normal_position,
-                                color,
+                                uv,
                             };
 
                             temp_vertices.push(v);

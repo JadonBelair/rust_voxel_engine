@@ -6,7 +6,7 @@ use chunk_manager::ChunkManager;
 use frustum::Frustum;
 use glam::{IVec3, Vec3};
 use texture::Texture;
-use wgpu::{util::DeviceExt, PresentMode};
+use wgpu::{PresentMode, util::DeviceExt};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
@@ -32,6 +32,7 @@ pub struct State {
     is_cursor_visible: bool,
 
     chunk_manager: ChunkManager,
+    chosen_block: Block,
 
     camera: Camera,
     projection: Projection,
@@ -41,6 +42,8 @@ pub struct State {
     camera_bind_group: wgpu::BindGroup,
 
     depth_texture: Texture,
+    atlas_texture: Texture,
+    atlas_bind_group: wgpu::BindGroup,
 }
 
 impl State {
@@ -139,11 +142,52 @@ impl State {
             }],
         });
 
+        let atlas_texture =
+            Texture::from_path(&device, &queue, "assets/atlas.png", Some("Atlas Texture")).unwrap();
+
+        let atlas_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("Atlas Bind Group Layout"),
+            });
+
+        let atlas_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &atlas_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&atlas_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&atlas_texture.sampler),
+                },
+            ],
+            label: Some("Atlas Bind Group"),
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shader.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout],
+                bind_group_layouts: &[&camera_bind_group_layout, &atlas_bind_group_layout],
                 push_constant_ranges: &[wgpu::PushConstantRange {
                     stages: wgpu::ShaderStages::VERTEX,
                     range: 0..std::mem::size_of::<[f32; 3]>() as u32,
@@ -197,7 +241,8 @@ impl State {
         let mut chunk_manager = ChunkManager::new(10);
         chunk_manager.update_around(IVec3::ZERO);
 
-        let depth_texture = Texture::create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));
+        let depth_texture =
+            Texture::create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));
 
         Ok(Self {
             surface,
@@ -210,6 +255,7 @@ impl State {
             is_cursor_visible: false,
 
             chunk_manager,
+            chosen_block: Block::DIRT,
 
             camera,
             projection,
@@ -219,6 +265,8 @@ impl State {
             camera_bind_group,
 
             depth_texture,
+            atlas_texture,
+            atlas_bind_group,
         })
     }
 
@@ -229,7 +277,8 @@ impl State {
             self.surface.configure(&self.device, &self.config);
             self.projection.resize(width, height);
             self.is_surface_configured = true;
-            self.depth_texture = Texture::create_depth_texture(&self.device, width, height, Some("Depth Texture"));
+            self.depth_texture =
+                Texture::create_depth_texture(&self.device, width, height, Some("Depth Texture"));
         }
     }
 
@@ -239,25 +288,38 @@ impl State {
         button: MouseButton,
         is_pressed: bool,
     ) {
+        let hit = if matches!(
+            button,
+            MouseButton::Left | MouseButton::Right | MouseButton::Middle
+        ) && is_pressed
+        {
+            self.chunk_manager.ray_cast(
+                self.camera.position,
+                self.camera.yaw,
+                self.camera.pitch,
+                10.0,
+            )
+        } else {
+            None
+        };
+
         match (button, is_pressed) {
             (MouseButton::Left, true) => {
-                if let Some((pos, _normal)) = self.chunk_manager.ray_cast(
-                    self.camera.position,
-                    self.camera.pitch,
-                    self.camera.yaw,
-                    10.0,
-                ) {
+                if let Some((pos, _)) = hit {
                     self.chunk_manager.set_block(pos, Block::AIR);
                 }
             }
             (MouseButton::Right, true) => {
-                if let Some((pos, normal)) = self.chunk_manager.ray_cast(
-                    self.camera.position,
-                    self.camera.pitch,
-                    self.camera.yaw,
-                    10.0,
-                ) {
-                    self.chunk_manager.set_block(pos + normal, Block::DIRT);
+                if let Some((pos, normal)) = hit {
+                    self.chunk_manager
+                        .set_block(pos + normal, self.chosen_block);
+                }
+            }
+            (MouseButton::Middle, true) => {
+                if let Some((pos, _)) = hit {
+                    if let Some(block) = self.chunk_manager.get_block(pos) {
+                        self.chosen_block = block;
+                    }
                 }
             }
             _ => (),
@@ -284,12 +346,16 @@ impl State {
     }
 
     pub fn update(&mut self, dt: std::time::Duration) {
-        let prev_chunk = (self.camera.position / CHUNK_SIZE as f32).floor();
+        let prev_chunk = (self.camera.position / CHUNK_SIZE as f32)
+            .floor()
+            .as_ivec3();
         self.camera_controller.update_camera(&mut self.camera, dt);
-        let new_chunk = (self.camera.position / CHUNK_SIZE as f32).floor();
+        let new_chunk = (self.camera.position / CHUNK_SIZE as f32)
+            .floor()
+            .as_ivec3();
 
         if prev_chunk != new_chunk {
-            self.chunk_manager.update_around(new_chunk.as_ivec3());
+            self.chunk_manager.update_around(new_chunk);
         }
 
         self.camera_uniform
@@ -300,9 +366,9 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        self.chunk_manager.build_chunk_data_in_queue(15);
+        self.chunk_manager.build_chunk_data_in_queue(20);
         self.chunk_manager
-            .build_chunk_mesh_in_queue(8, &self.device);
+            .build_chunk_mesh_in_queue(12, &self.device);
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -354,6 +420,7 @@ impl State {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.atlas_bind_group, &[]);
             let frustum = Frustum::from_camera(&self.camera, &self.projection);
             self.chunk_manager.render(&mut render_pass, &frustum);
         }
