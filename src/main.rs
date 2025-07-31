@@ -315,19 +315,6 @@ impl State {
     }
 
     pub fn update(&mut self, dt: std::time::Duration) {
-        // if self
-        //     .chunk_manager
-        //     .ray_cast(
-        //         self.camera.position + Vec3::new(0.0, -0.9, 0.0),
-        //         -90.0_f32.to_radians(),
-        //         0.0,
-        //         1.0,
-        //     )
-        //     .is_none()
-        // {
-        //     self.camera.position.y -= 0.05;
-        // }
-
         let prev_chunk = (self.camera.position / CHUNK_SIZE as f32).floor();
         self.camera_controller.update_camera(&mut self.camera, dt);
         let new_chunk = (self.camera.position / CHUNK_SIZE as f32).floor();

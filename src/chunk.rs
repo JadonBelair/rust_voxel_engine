@@ -1,11 +1,9 @@
 use glam::{DVec3, IVec3, UVec3, Vec3};
 use noise::NoiseFn;
-// use rand::Rng;
 use wgpu::{RenderPass, util::DeviceExt};
 
 use crate::frustum::{Aabb, Frustum};
 
-// const DO_3D: bool = true;
 pub const CHUNK_SIZE: usize = 32;
 
 #[repr(C)]
@@ -152,8 +150,6 @@ impl Chunk {
             [3, 2, 6, 7],
         ];
 
-        // let mut rng = rand::rng();
-
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
@@ -162,7 +158,7 @@ impl Chunk {
                         continue;
                     }
 
-                    let shade = 1.0; //Vec3::splat(rng.random_range((0.8)..(1.2)));
+                    let shade = 1.0;
 
                     for face in 0..6 {
                         let mut nx = x as i32;
@@ -275,7 +271,6 @@ impl Chunk {
     pub fn render(&self, render_pass: &mut RenderPass, frustum: &Frustum) -> bool {
         if let Some(mesh) = &self.mesh {
             if frustum.contains_aabb(&self.bounding_box) {
-                // render_pass.set_push_constants(wgpu::ShaderStages::VERTEX, 0, bytemuck::cast_slice(&self.model_matrix.to_cols_array_2d()));
                 render_pass.set_push_constants(
                     wgpu::ShaderStages::VERTEX,
                     0,

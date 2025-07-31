@@ -60,7 +60,7 @@ fn vs_main(
     return out;
 }
 
-const BLINN_PHONG: bool = true;
+const BLINN_PHONG: bool = false;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {

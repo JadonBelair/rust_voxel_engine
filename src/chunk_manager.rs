@@ -1,13 +1,10 @@
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    sync::mpsc,
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use glam::{IVec3, Vec3};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
-    chunk::{Block, CHUNK_SIZE, Chunk},
+    chunk::{Block, Chunk, ChunkMeshData, CHUNK_SIZE},
     frustum::Frustum,
 };
 
@@ -116,33 +113,24 @@ impl ChunkManager {
     }
 
     pub fn build_chunk_data_in_queue(&mut self, amount: usize) {
-        let (tx, rx) = mpsc::channel();
-        (0..amount)
+        // let (tx, rx) = mpsc::channel();
+        let chunks = (0..amount)
             .filter_map(|_| self.chunk_data_load_queue.pop_front())
             .collect::<Vec<IVec3>>()
             .into_par_iter()
-            .for_each_with(tx, |s, position| {
-                let chunk = Chunk::new(position);
-                s.send(chunk).unwrap();
-            });
+            .map(Chunk::new)
+            .collect::<Vec<Chunk>>();
 
-        for chunk in rx {
+        for chunk in chunks {
             if !chunk.is_empty {
                 self.chunk_mesh_load_queue.push_back(chunk.position);
             }
+
             self.chunk_map.insert(chunk.position, chunk);
         }
     }
 
     pub fn build_chunk_mesh_in_queue(&mut self, amount: usize, device: &wgpu::Device) {
-        let (tx, rx) = mpsc::channel();
-
-        // let reload_tasks = self
-        //     .chunk_mesh_reload_queue
-        //     .drain()
-        //     // .take(amount)
-        //     .collect::<Vec<IVec3>>();
-
         let reload_tasks = (0..amount)
             .filter_map(|_| {
                 if let Some(&pos) = self.chunk_mesh_reload_queue.iter().next() {
@@ -154,22 +142,23 @@ impl ChunkManager {
             })
             .collect::<Vec<IVec3>>();
 
-        (0..amount.saturating_sub(reload_tasks.len()))
+        let all_tasks = (0..amount.saturating_sub(reload_tasks.len()))
             .filter_map(|_| self.chunk_mesh_load_queue.pop_front())
             .chain(reload_tasks)
-            .collect::<Vec<IVec3>>()
+            .collect::<Vec<IVec3>>();
+
+        let meshes =all_tasks
             .into_par_iter()
-            .for_each_with(tx, |s, position| {
-                let mesh = if let Some(chunk) = self.chunk_map.get(&position) {
-                    chunk.generate_mesh()
+            .filter_map(|position| {
+                if let Some(chunk) = self.chunk_map.get(&position) {
+                    Some((position, chunk.generate_mesh()))
                 } else {
                     None
-                };
+                }
+            })
+            .collect::<Vec<(IVec3, Option<ChunkMeshData>)>>();
 
-                s.send((position, mesh)).unwrap();
-            });
-
-        for (pos, mesh) in rx {
+        for (pos, mesh) in meshes {
             if let Some(chunk) = self.chunk_map.get_mut(&pos) {
                 if let Some(mesh) = mesh {
                     chunk.load_mesh(mesh, device);
@@ -234,14 +223,13 @@ impl ChunkManager {
     }
 
     pub fn render(&self, render_pass: &mut wgpu::RenderPass, frustum: &Frustum) {
-        // println!("{}\t{}\t{}", self.chunk_map.len(), self.chunk_data_load_queue.len(), self.chunk_mesh_load_queue.len());
-        // let mut count = 0;
+        let mut count = 0;
         for chunk in self.chunk_map.values() {
             if chunk.render(render_pass, frustum) {
-                // count += 1;
+                count += 1;
             }
         }
 
-        // println!("drew {count} chunks");
+        println!("drew {count} chunks");
     }
 }
