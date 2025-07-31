@@ -58,7 +58,15 @@ impl Block {
 
     fn get_uv(&self, side: usize, vertex: usize) -> Vec2 {
         match self {
-            Self::GRASS => Self::GRASS_UV[side][vertex],
+            Self::GRASS => {
+                if side < 4 {
+                    return Self::GRASS_UV[0][vertex];
+                } if side == 4 {
+                    return Self::GRASS_UV[1][vertex];
+                } else {
+                    return Self::GRASS_UV[2][vertex];
+                }
+            }
             Self::DIRT => Self::GRASS_UV[1][vertex],
             _ => unreachable!(),
         }
@@ -147,13 +155,15 @@ impl Chunk {
         return false;
     }
 
-    pub fn generate_mesh(&self) -> Option<ChunkMeshData> {
+    pub fn generate_mesh(&self, neighbors: [Option<&Chunk>; 6]) -> (Option<ChunkMeshData>, bool) {
         if self.is_empty {
-            return None;
+            return (None, false);
         }
 
         let mut temp_vertices = Vec::new();
         let mut temp_indices = Vec::new();
+
+        let mut missing_neighors = false;
 
         let mut vertex_count = 0;
         #[allow(unused)]
@@ -177,15 +187,6 @@ impl Chunk {
             [1, 5, 6, 2], // Right
             [4, 5, 1, 0], // Bottom
             [3, 2, 6, 7], // Top
-        ];
-
-        const FACE_UV_INDEX: [usize; 6] = [
-            0, // Front
-            0, // Back
-            0, // Left
-            0, // Right
-            1, // Bottom
-            2, // Top
         ];
 
         for x in 0..CHUNK_SIZE {
@@ -229,6 +230,23 @@ impl Chunk {
                             {
                                 render_face = false;
                             }
+                        } else {
+                            // the voxel we wanna check is in a neighboring chunk
+                            if let Some(chunk) = neighbors[face] {
+                                let mut pos = IVec3::new(nx, ny, nz);
+                                pos %= CHUNK_SIZE as i32;
+                                pos = pos.map(|v| if v < 0 { v + CHUNK_SIZE as i32 } else { v });
+
+                                if chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * pos.z as usize
+                                    + CHUNK_SIZE * pos.y as usize
+                                    + pos.x as usize]
+                                    != Block::AIR
+                                {
+                                    render_face = false;
+                                }
+                            } else {
+                                missing_neighors = true;
+                            }
                         }
 
                         if !render_face {
@@ -245,7 +263,7 @@ impl Chunk {
                                 (position.x << 12) | (position.y << 6) | (position.z << 0);
 
                             let normal_position = ((face as u32) << 18) | position;
-                            let uv = block.get_uv(FACE_UV_INDEX[face], i);
+                            let uv = block.get_uv(face, i);
 
                             let v = Vertex {
                                 normal_position,
@@ -268,10 +286,13 @@ impl Chunk {
             }
         }
 
-        Some(ChunkMeshData {
-            vertices: temp_vertices,
-            indices: temp_indices,
-        })
+        (
+            Some(ChunkMeshData {
+                vertices: temp_vertices,
+                indices: temp_indices,
+            }),
+            missing_neighors,
+        )
     }
 
     pub fn load_mesh(&mut self, mesh_data: ChunkMeshData, device: &wgpu::Device) {

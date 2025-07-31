@@ -13,6 +13,8 @@ pub struct ChunkManager {
     pub chunk_data_load_queue: VecDeque<IVec3>,
     pub chunk_mesh_load_queue: VecDeque<IVec3>,
     pub chunk_mesh_reload_queue: HashSet<IVec3>,
+    pub chunk_neighbor_changed_queue: HashSet<IVec3>,
+    pub chunks_with_missing_neighbors: HashSet<IVec3>,
     pub render_distance: i32,
 }
 
@@ -23,6 +25,8 @@ impl ChunkManager {
             chunk_data_load_queue: VecDeque::new(),
             chunk_mesh_load_queue: VecDeque::new(),
             chunk_mesh_reload_queue: HashSet::new(),
+            chunk_neighbor_changed_queue: HashSet::new(),
+            chunks_with_missing_neighbors: HashSet::new(),
             render_distance,
         }
     }
@@ -50,6 +54,19 @@ impl ChunkManager {
         if let Some(chunk) = self.chunk_map.get_mut(&chunk_pos) {
             if chunk.set_block(inner_pos, block) {
                 self.chunk_mesh_reload_queue.insert(chunk_pos);
+                for dir in &[
+                    IVec3::NEG_X,
+                    IVec3::X,
+                    IVec3::NEG_Y,
+                    IVec3::Y,
+                    IVec3::NEG_Z,
+                    IVec3::Z,
+                ] {
+                    let neighbor_pos = chunk_pos + *dir;
+                    if self.chunk_map.contains_key(&neighbor_pos) {
+                        self.chunk_neighbor_changed_queue.insert(neighbor_pos);
+                    }
+                }
             }
         }
     }
@@ -121,7 +138,29 @@ impl ChunkManager {
             .collect::<Vec<Chunk>>();
 
         for chunk in chunks {
-            if !chunk.is_empty {
+            for dir in [
+                IVec3::NEG_X,
+                IVec3::X,
+                IVec3::NEG_Y,
+                IVec3::Y,
+                IVec3::NEG_Z,
+                IVec3::Z,
+            ] {
+                let neighbor_pos = chunk.position + dir;
+                if self.chunk_map.contains_key(&neighbor_pos) {
+                    self.chunks_with_missing_neighbors.insert(neighbor_pos);
+                    if !self.chunk_mesh_load_queue.contains(&neighbor_pos)
+                        & !self.chunk_mesh_reload_queue.contains(&neighbor_pos) {
+                        self.chunk_neighbor_changed_queue.insert(neighbor_pos);
+                    }
+                }
+            }
+
+            if !chunk.is_empty
+                & !self.chunk_mesh_load_queue.contains(&chunk.position)
+                & !self.chunk_mesh_reload_queue.contains(&chunk.position)
+                & !self.chunk_neighbor_changed_queue.contains(&chunk.position)
+            {
                 self.chunk_mesh_load_queue.push_back(chunk.position);
             }
 
@@ -146,16 +185,50 @@ impl ChunkManager {
             .chain(reload_tasks)
             .collect::<Vec<IVec3>>();
 
+        let neighbor_changed_tasks = (0..amount.saturating_sub(all_tasks.len()))
+            .filter_map(|_| {
+                if let Some(&pos) = self.chunk_neighbor_changed_queue.iter().next() {
+                    self.chunk_neighbor_changed_queue.remove(&pos);
+                    Some(pos)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<IVec3>>();
+
+        let all_tasks = all_tasks
+            .iter()
+            .chain(&neighbor_changed_tasks)
+            .collect::<Vec<&IVec3>>();
+
         let meshes = all_tasks
             .into_par_iter()
-            .filter_map(|position| {
-                self.chunk_map
-                    .get(&position)
-                    .map(|chunk| (position, chunk.generate_mesh()))
-            })
-            .collect::<Vec<(IVec3, Option<ChunkMeshData>)>>();
+            .map(|&position| {
+                let neighbors = [
+                    self.chunk_map.get(&(position + IVec3::NEG_Z)), // Front
+                    self.chunk_map.get(&(position + IVec3::Z)),     // Back
+                    self.chunk_map.get(&(position + IVec3::NEG_X)), // Left
+                    self.chunk_map.get(&(position + IVec3::X)),     // Right
+                    self.chunk_map.get(&(position + IVec3::NEG_Y)), // Bottom
+                    self.chunk_map.get(&(position + IVec3::Y)),     // Top
+                ];
 
-        for (pos, mesh) in meshes {
+                let chunk = self.chunk_map.get(&position);
+                let (mesh, missing_neighbors) = chunk
+                    .map(|chunk| chunk.generate_mesh(neighbors))
+                    .unwrap_or((None, false));
+
+                (position, mesh, missing_neighbors)
+            })
+            .collect::<Vec<(IVec3, Option<ChunkMeshData>, bool)>>();
+
+        for (pos, mesh, missing_neighbors) in meshes {
+            if missing_neighbors {
+                self.chunks_with_missing_neighbors.insert(pos);
+            } else {
+                self.chunks_with_missing_neighbors.remove(&pos);
+            }
+
             if let Some(chunk) = self.chunk_map.get_mut(&pos) {
                 if let Some(mesh) = mesh {
                     chunk.load_mesh(mesh, device);
@@ -196,6 +269,24 @@ impl ChunkManager {
                 && chunk.position.z >= position.z - self.render_distance as i32
         });
 
+        self.chunk_neighbor_changed_queue.retain(|chunk_position| {
+            chunk_position.x <= position.x + self.render_distance as i32
+                && chunk_position.x >= position.x - self.render_distance as i32
+                && chunk_position.y <= position.y + self.render_distance as i32
+                && chunk_position.y >= position.y - self.render_distance as i32
+                && chunk_position.z <= position.z + self.render_distance as i32
+                && chunk_position.z >= position.z - self.render_distance as i32
+        });
+
+        self.chunks_with_missing_neighbors.retain(|chunk_position| {
+            chunk_position.x <= position.x + self.render_distance as i32
+                && chunk_position.x >= position.x - self.render_distance as i32
+                && chunk_position.y <= position.y + self.render_distance as i32
+                && chunk_position.y >= position.y - self.render_distance as i32
+                && chunk_position.z <= position.z + self.render_distance as i32
+                && chunk_position.z >= position.z - self.render_distance as i32
+        });
+
         for x in -self.render_distance..=self.render_distance {
             for y in -self.render_distance..=self.render_distance {
                 for z in -self.render_distance..=self.render_distance {
@@ -227,11 +318,12 @@ impl ChunkManager {
             }
         }
         println!(
-            "{}/{}\t{}\t{}",
+            "{}/{}\t{}\t{}\t{}",
             count,
             self.chunk_map.len(),
             self.chunk_data_load_queue.len(),
-            self.chunk_mesh_load_queue.len() + self.chunk_mesh_reload_queue.len()
+            self.chunk_mesh_load_queue.len() + self.chunk_mesh_reload_queue.len() + self.chunk_neighbor_changed_queue.len(),
+            self.chunks_with_missing_neighbors.len(),
         );
     }
 }
