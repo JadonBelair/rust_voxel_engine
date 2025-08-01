@@ -11,7 +11,7 @@ pub const CHUNK_SIZE: usize = 32;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    /// mapped to 0b0vvuuuuuuuunnnxxxxxxyyyyyyzzzzzz
+    /// mapped to 0b000uuuuuuuunnnxxxxxxyyyyyyzzzzzz
     pub packed_data: u32,
     pub voxel_position: IVec3,
 }
@@ -36,11 +36,14 @@ pub enum Block {
     DIRT = 1,
     GRASS = 2,
     STONE = 3,
+    LOG = 4,
+    PLANK = 5,
 }
 
 impl Block {
     fn get_uv(&self, side: usize) -> u8 {
         match self {
+            Self::AIR => 0,
             Self::GRASS => {
                 if side < 4 {
                     return 0;
@@ -53,7 +56,14 @@ impl Block {
             }
             Self::DIRT => 2,
             Self::STONE => 3,
-            _ => unreachable!(),
+            Self::LOG => {
+                if side < 4 {
+                    return 5;
+                } else {
+                    return 4;
+                }
+            }
+            Self::PLANK => 6,
         }
     }
 }
@@ -253,8 +263,7 @@ impl Chunk {
 
                             let uv = block.get_uv(face);
 
-                            let uv_normal_position = ((uv as u32) << 21) | normal_position;
-                            let packed_data = ((i as u32) << 29) | uv_normal_position;
+                            let packed_data = ((uv as u32) << 21) | normal_position;
 
                             let voxel_position =
                                 self.world_position + IVec3::new(x as i32, y as i32, z as i32);

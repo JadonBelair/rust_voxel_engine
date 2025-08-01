@@ -1,6 +1,5 @@
 struct VertexInput {
 	@location(0) packed_data: u32,
-	// @location(1) uv: vec2<f32>,
 	@location(1) voxel_pos: vec3<i32>,
 };
 
@@ -34,6 +33,7 @@ struct VertexOutput {
 @vertex
 fn vs_main(
     vertex: VertexInput,
+	@builtin(vertex_index) vertex_index: u32,
 ) -> VertexOutput {
 	let position = vec3<f32>(
 		f32((vertex.packed_data >> 12) & 0x3F),
@@ -54,7 +54,7 @@ fn vs_main(
 	let normal_index = (vertex.packed_data >> 18) & 0x07;
 
 	let uv_index = (vertex.packed_data >> 21) & 0xFF;
-	let v_index = (vertex.packed_data >> 29) & 0x03;
+	let v_index = vertex_index % 4;
 
 	var uv = vec2<f32>(f32(uv_index % 16) / 16.0, floor(f32(uv_index) / 16.0));
 
@@ -96,7 +96,7 @@ var s_atlas: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	var result = vec3<f32>(1.0, 1.0, 1.0);
+	var result = vec3<f32>(1.0);
 	let look = vec3<i32>(push[3], push[4], push[5]);
 	let color = textureSample(t_atlas, s_atlas, in.uv).xyz;
 	if (BLINN_PHONG) {
@@ -134,7 +134,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 	if (in.voxel_pos.x == look.x && in.voxel_pos.y == look.y && in.voxel_pos.z == look.z) {
 		result *= 1.8;
-		result = clamp(result, vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
+		result = clamp(result, vec3<f32>(0.0), vec3<f32>(1.0));
 	}
 
 	return vec4<f32>(result, 1.0);
