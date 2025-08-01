@@ -175,7 +175,7 @@ impl CameraController {
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;
 
-        camera.pitch = camera.pitch.clamp(-89.0, 89.0);
+        camera.pitch = camera.pitch.clamp(-89.0_f32.to_radians(), 89.0_f32.to_radians());
 
         let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();

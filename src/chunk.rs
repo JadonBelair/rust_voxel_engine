@@ -1,4 +1,4 @@
-use glam::{DVec3, IVec3, UVec3, Vec2};
+use glam::{DVec3, IVec3, UVec3};
 use noise::NoiseFn;
 use wgpu::{RenderPass, util::DeviceExt};
 
