@@ -3,7 +3,6 @@ use std::{sync::Arc, time::Instant};
 use camera::{Camera, CameraController, CameraUniform, Projection};
 use chunk::{Block, CHUNK_SIZE, Vertex};
 use chunk_manager::ChunkManager;
-use egui_renderer::EguiRenderer;
 use enum_iterator::last;
 use frustum::Frustum;
 use glam::{IVec3, Vec3};
@@ -17,7 +16,6 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-mod egui_renderer;
 mod camera;
 mod chunk;
 mod chunk_manager;
@@ -50,8 +48,6 @@ pub struct State {
     #[allow(unused)]
     atlas_texture: Texture,
     atlas_bind_group: wgpu::BindGroup,
-    
-    egui_renderer: EguiRenderer,
 }
 
 impl State {
@@ -258,8 +254,6 @@ impl State {
         let depth_texture =
             Texture::create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));
 
-        let egui_renderer = EguiRenderer::new(&device, config.format, None, 1, &window);
-
         Ok(Self {
             surface,
             device,
@@ -285,8 +279,6 @@ impl State {
             depth_texture,
             atlas_texture,
             atlas_bind_group,
-
-            egui_renderer,
         })
     }
 
@@ -358,7 +350,7 @@ impl State {
                     let grab_mode = if !self.is_cursor_visible {
                         CursorGrabMode::None
                     } else {
-                        CursorGrabMode::Locked
+                        CursorGrabMode::Confined
                     };
 
                     self.window.set_cursor_grab(grab_mode).unwrap();
@@ -436,6 +428,7 @@ impl State {
                         }),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
@@ -462,21 +455,6 @@ impl State {
         }
 
 
-        let screen_descriptor = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [self.config.width, self.config.height],
-            pixels_per_point: self.window.scale_factor() as f32,
-        };
-        self.egui_renderer.begin_frame(&self.window);
-
-        egui::Window::new(format!("{:?}", self.chosen_block))
-            .default_pos([0.0, 0.0])
-            .resizable(true)
-            .default_open(false)
-            .movable(true)
-            .show(self.egui_renderer.context(), |_| {
-            });
-
-        self.egui_renderer.end_frame_and_draw(&self.device, &self.queue, &mut encoder, &self.window, &view, screen_descriptor);
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
@@ -502,7 +480,7 @@ impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes();
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-        window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
+        window.set_cursor_grab(CursorGrabMode::Confined).unwrap();
         window.set_cursor_visible(false);
         self.state = Some(pollster::block_on(State::new(window)).unwrap());
     }
@@ -540,11 +518,6 @@ impl ApplicationHandler<State> for App {
             Some(state) => state,
             None => return,
         };
-
-        state
-            .egui_renderer
-            .handle_input(&state.window, &event);
-
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
