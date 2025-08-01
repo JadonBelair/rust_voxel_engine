@@ -5,7 +5,7 @@ use glam::{IVec3, Vec3};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
-    chunk::{Block, Chunk, ChunkMeshData, CHUNK_SIZE},
+    chunk::{Block, CHUNK_SIZE, Chunk, ChunkMeshData},
     frustum::Frustum,
 };
 
@@ -151,7 +151,8 @@ impl ChunkManager {
                 if self.chunk_map.contains_key(&neighbor_pos) {
                     self.chunks_with_missing_neighbors.insert(neighbor_pos);
                     if !self.chunk_mesh_load_queue.contains(&neighbor_pos)
-                        & !self.chunk_mesh_reload_queue.contains(&neighbor_pos) {
+                        & !self.chunk_mesh_reload_queue.contains(&neighbor_pos)
+                    {
                         self.chunk_neighbor_loaded_queue.insert(neighbor_pos);
                     }
                 }
@@ -323,7 +324,9 @@ impl ChunkManager {
             count,
             self.chunk_map.len(),
             self.chunk_data_load_queue.len(),
-            self.chunk_mesh_load_queue.len() + self.chunk_mesh_reload_queue.len() + self.chunk_neighbor_loaded_queue.len(),
+            self.chunk_mesh_load_queue.len()
+                + self.chunk_mesh_reload_queue.len()
+                + self.chunk_neighbor_loaded_queue.len(),
             self.chunks_with_missing_neighbors.len(),
         );
     }

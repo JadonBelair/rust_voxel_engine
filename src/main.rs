@@ -1,12 +1,12 @@
 use std::{sync::Arc, time::Instant};
 
 use camera::{Camera, CameraController, CameraUniform, Projection};
-use chunk::{Block, Vertex, CHUNK_SIZE};
+use chunk::{Block, CHUNK_SIZE, Vertex};
 use chunk_manager::ChunkManager;
 use frustum::Frustum;
 use glam::{IVec3, Vec3};
 use texture::Texture;
-use wgpu::{util::DeviceExt, PresentMode};
+use wgpu::{PresentMode, util::DeviceExt};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
