@@ -33,28 +33,36 @@ pub enum Block {
     AIR = 0,
     DIRT = 1,
     GRASS = 2,
+    STONE = 3,
 }
 
 impl Block {
     const GRASS_UV: [[Vec2; 4]; 3] = [
         [
-            Vec2::new(0.0, 1.0),
-            Vec2::new(1.0 / 3.0, 1.0),
-            Vec2::new(1.0 / 3.0, 0.0),
+            Vec2::new(1.0 / 16.0, 1.0 / 16.0),
+            Vec2::new(0.0, 1.0 / 16.0),
             Vec2::new(0.0, 0.0),
+            Vec2::new(1.0 / 16.0, 0.0),
         ], // Sides
         [
-            Vec2::new(2.0 / 3.0, 1.0),
-            Vec2::new(1.0, 1.0),
-            Vec2::new(1.0, 0.0),
-            Vec2::new(2.0 / 3.0, 0.0),
+            Vec2::new(3.0 / 16.0, 1.0 / 16.0),
+            Vec2::new(2.0 / 16.0, 1.0 / 16.0),
+            Vec2::new(2.0 / 16.0, 0.0),
+            Vec2::new(3.0 / 16.0, 0.0),
         ], // Bottom
         [
-            Vec2::new(1.0 / 3.0, 1.0),
-            Vec2::new(2.0 / 3.0, 1.0),
-            Vec2::new(2.0 / 3.0, 0.0),
-            Vec2::new(1.0 / 3.0, 0.0),
+            Vec2::new(2.0 / 16.0, 1.0 / 16.0),
+            Vec2::new(1.0 / 16.0, 1.0 / 16.0),
+            Vec2::new(1.0 / 16.0, 0.0),
+            Vec2::new(2.0 / 16.0, 0.0),
         ], // Top
+    ];
+
+    const STONE_UV: [Vec2; 4] = [
+        Vec2::new(4.0 / 16.0, 1.0 / 16.0),
+        Vec2::new(3.0 / 16.0, 1.0 / 16.0),
+        Vec2::new(3.0 / 16.0, 0.0),
+        Vec2::new(4.0 / 16.0, 0.0),
     ];
 
     fn get_uv(&self, side: usize, vertex: usize) -> Vec2 {
@@ -69,6 +77,7 @@ impl Block {
                 }
             }
             Self::DIRT => Self::GRASS_UV[1][vertex],
+            Self::STONE => Self::STONE_UV[vertex],
             _ => unreachable!(),
         }
     }
@@ -118,7 +127,7 @@ impl Chunk {
                             * (CHUNK_SIZE - 1) as f64) as u32;
                         if val > 16 {
                             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] =
-                                Block::DIRT;
+                                Block::STONE;
                             chunk.is_empty = false;
                         }
                     } else {
