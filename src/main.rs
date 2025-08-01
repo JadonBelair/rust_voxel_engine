@@ -4,6 +4,7 @@ use camera::{Camera, CameraController, CameraUniform, Projection};
 use chunk::{Block, CHUNK_SIZE, Vertex};
 use chunk_manager::ChunkManager;
 use egui_renderer::EguiRenderer;
+use enum_iterator::last;
 use frustum::Frustum;
 use glam::{IVec3, Vec3};
 use texture::Texture;
@@ -328,6 +329,22 @@ impl State {
                     if let Some(block) = self.chunk_manager.get_block(pos) {
                         self.chosen_block = block;
                     }
+                }
+            }
+            (MouseButton::Forward, true) => {
+                let current: usize = self.chosen_block.into();
+                if let Ok(next) = Block::try_from(current + 1) {
+                    self.chosen_block = next;
+                } else if let Ok(block) = Block::try_from(1) {
+                    self.chosen_block = block;
+                }
+            }
+            (MouseButton::Back, true) => {
+                let current: usize = self.chosen_block.into();
+                if current > 1 && let Ok(next) = Block::try_from(current - 1) {
+                    self.chosen_block = next;
+                } else if let Some(block) = last::<Block>() {
+                    self.chosen_block = block;
                 }
             }
             _ => (),

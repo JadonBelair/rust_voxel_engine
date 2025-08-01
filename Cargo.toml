@@ -10,6 +10,7 @@ bytemuck = { version = "1.23.1", features = ["derive"] }
 egui = "0.32.0"
 egui-wgpu = { version = "0.32.0", features = ["wayland", "winit", "x11"] }
 egui-winit = "0.32.0"
+enum-iterator = "2.1.0"
 env_logger = "0.11.8"
 glam = { version = "0.30.5", features = ["bytemuck", "rand"] }
 image = "0.25.6"
