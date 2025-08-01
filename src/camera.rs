@@ -169,6 +169,14 @@ impl CameraController {
     pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {
         let dt = dt.as_secs_f32();
 
+        camera.yaw += self.rotate_horizontal.to_radians() * self.sensitivity;
+        camera.pitch += -self.rotate_vertical.to_radians() * self.sensitivity;
+
+        self.rotate_horizontal = 0.0;
+        self.rotate_vertical = 0.0;
+
+        camera.pitch = camera.pitch.clamp(-89.0, 89.0);
+
         let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
 
@@ -179,21 +187,11 @@ impl CameraController {
         };
 
         let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalize();
-        camera.position += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
-        camera.position += right * (self.amount_right - self.amount_left) * self.speed * dt;
 
-        camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
+        let forward = forward * (self.amount_forward - self.amount_backward);
+        let right = right * (self.amount_right - self.amount_left);
+        let up = Vec3::ZERO.with_y(self.amount_up - self.amount_down);
 
-        camera.yaw += self.rotate_horizontal.to_radians() * self.sensitivity;
-        camera.pitch += -self.rotate_vertical.to_radians() * self.sensitivity;
-
-        self.rotate_horizontal = 0.0;
-        self.rotate_vertical = 0.0;
-
-        if camera.pitch < (-89.0_f32).to_radians() {
-            camera.pitch = (-89.0_f32).to_radians()
-        } else if camera.pitch > (89.0_f32).to_radians() {
-            camera.pitch = (89.0_f32).to_radians();
-        }
+        camera.position += (forward + right + up).normalize_or_zero() * self.speed * dt;
     }
 }
