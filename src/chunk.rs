@@ -1,5 +1,6 @@
 use glam::{DVec3, IVec3, UVec3};
 use noise::NoiseFn;
+use num_enum::TryFromPrimitive;
 use wgpu::{RenderPass, util::DeviceExt};
 
 use crate::frustum::{Aabb, Frustum};
@@ -27,7 +28,8 @@ impl Vertex {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, TryFromPrimitive)]
+#[repr(usize)]
 pub enum Block {
     AIR = 0,
     DIRT = 1,
