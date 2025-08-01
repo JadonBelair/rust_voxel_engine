@@ -1,7 +1,7 @@
 struct VertexInput {
-	@location(0) normal_position: u32,
-	@location(1) uv: vec2<f32>,
-	@location(2) voxel_pos: vec3<i32>,
+	@location(0) packed_data: u32,
+	// @location(1) uv: vec2<f32>,
+	@location(1) voxel_pos: vec3<i32>,
 };
 
 struct Camera {
@@ -36,9 +36,9 @@ fn vs_main(
     vertex: VertexInput,
 ) -> VertexOutput {
 	let position = vec3<f32>(
-		f32((vertex.normal_position >> 12) & 0x3F),
-		f32((vertex.normal_position >>  6) & 0x3F),
-		f32((vertex.normal_position >>  0) & 0x3F),
+		f32((vertex.packed_data >> 12) & 0x3F),
+		f32((vertex.packed_data >>  6) & 0x3F),
+		f32((vertex.packed_data >>  0) & 0x3F),
 	);
 
 	var model = mat4x4<f32>(
@@ -51,10 +51,31 @@ fn vs_main(
 	model[3] = vec4<f32>(chunk_pos, 1.0);
 	let world_position = model * vec4<f32>(position, 1.0);
 
-	let normal_index = (vertex.normal_position >> 18) & 0x07;
+	let normal_index = (vertex.packed_data >> 18) & 0x07;
+
+	let uv_index = (vertex.packed_data >> 21) & 0xFF;
+	let v_index = (vertex.packed_data >> 29) & 0x03;
+
+	var uv = vec2<f32>(f32(uv_index % 16) / 16.0, floor(f32(uv_index) / 16.0));
+
+	switch v_index {
+		case 0: {
+			uv.x += 1.0 / 16.0;
+			uv.y += 1.0 / 16.0;
+		}
+		case 1: {
+			uv.y += 1.0 / 16.0;
+		}
+		case 3: {
+			uv.x += 1.0 / 16.0;
+		}
+		default: {
+		}
+	}
+
 
     var out: VertexOutput;
-    out.uv = vertex.uv;
+    out.uv = uv;
     out.clip_position = camera.view_proj * world_position;
     out.frag_position = world_position.xyz;
 	out.normal = NORMALS[normal_index];

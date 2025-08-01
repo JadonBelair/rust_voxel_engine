@@ -9,15 +9,14 @@ pub const CHUNK_SIZE: usize = 32;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
-    /// mapped to 0b0000000000000000000nnnxxxxxxyyyyyyzzzzzz
-    pub normal_position: u32,
-    pub uv: Vec2,
+    /// mapped to 0b0vvuuuuuuuunnnxxxxxxyyyyyyzzzzzz
+    pub packed_data: u32,
     pub voxel_position: IVec3,
 }
 
 impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![0 => Uint32, 1 => Float32x2, 2 => Sint32x3];
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Uint32, 1 => Sint32x3];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -37,47 +36,20 @@ pub enum Block {
 }
 
 impl Block {
-    const GRASS_UV: [[Vec2; 4]; 3] = [
-        [
-            Vec2::new(1.0 / 16.0, 1.0 / 16.0),
-            Vec2::new(0.0, 1.0 / 16.0),
-            Vec2::new(0.0, 0.0),
-            Vec2::new(1.0 / 16.0, 0.0),
-        ], // Sides
-        [
-            Vec2::new(3.0 / 16.0, 1.0 / 16.0),
-            Vec2::new(2.0 / 16.0, 1.0 / 16.0),
-            Vec2::new(2.0 / 16.0, 0.0),
-            Vec2::new(3.0 / 16.0, 0.0),
-        ], // Bottom
-        [
-            Vec2::new(2.0 / 16.0, 1.0 / 16.0),
-            Vec2::new(1.0 / 16.0, 1.0 / 16.0),
-            Vec2::new(1.0 / 16.0, 0.0),
-            Vec2::new(2.0 / 16.0, 0.0),
-        ], // Top
-    ];
-
-    const STONE_UV: [Vec2; 4] = [
-        Vec2::new(4.0 / 16.0, 1.0 / 16.0),
-        Vec2::new(3.0 / 16.0, 1.0 / 16.0),
-        Vec2::new(3.0 / 16.0, 0.0),
-        Vec2::new(4.0 / 16.0, 0.0),
-    ];
-
-    fn get_uv(&self, side: usize, vertex: usize) -> Vec2 {
+    fn get_uv(&self, side: usize) -> u8 {
         match self {
             Self::GRASS => {
                 if side < 4 {
-                    return Self::GRASS_UV[0][vertex];
-                } if side == 4 {
-                    return Self::GRASS_UV[1][vertex];
+                    return 0;
+                }
+                if side == 5 {
+                    return 1;
                 } else {
-                    return Self::GRASS_UV[2][vertex];
+                    return 2;
                 }
             }
-            Self::DIRT => Self::GRASS_UV[1][vertex],
-            Self::STONE => Self::STONE_UV[vertex],
+            Self::DIRT => 2,
+            Self::STONE => 3,
             _ => unreachable!(),
         }
     }
@@ -104,7 +76,10 @@ impl Chunk {
             world_position,
             blocks: [Block::AIR; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
             is_empty: true,
-            bounding_box: Aabb::new(world_position.as_vec3(), world_position.as_vec3() + CHUNK_SIZE as f32),
+            bounding_box: Aabb::new(
+                world_position.as_vec3(),
+                world_position.as_vec3() + CHUNK_SIZE as f32,
+            ),
             mesh: None,
         };
 
@@ -207,8 +182,6 @@ impl Chunk {
                         continue;
                     }
 
-                    // let shade = 1.0;
-
                     for face in 0..6 {
                         let mut nx = x as i32;
                         let mut ny = y as i32;
@@ -255,6 +228,7 @@ impl Chunk {
                                     render_face = false;
                                 }
                             } else {
+                                // the neighbor hasnt loaded yet so we'll need to remesh this later
                                 missing_neighors = true;
                             }
                         }
@@ -273,13 +247,17 @@ impl Chunk {
                                 (position.x << 12) | (position.y << 6) | (position.z << 0);
 
                             let normal_position = ((face as u32) << 18) | position;
-                            let uv = block.get_uv(face, i);
 
-                            let voxel_position = self.world_position + IVec3::new(x as i32, y as i32, z as i32);
+                            let uv = block.get_uv(face);
+
+                            let uv_normal_position = ((uv as u32) << 21) | normal_position;
+                            let packed_data = ((i as u32) << 29) | uv_normal_position;
+
+                            let voxel_position =
+                                self.world_position + IVec3::new(x as i32, y as i32, z as i32);
 
                             let v = Vertex {
-                                normal_position,
-                                uv,
+                                packed_data,
                                 voxel_position,
                             };
 
