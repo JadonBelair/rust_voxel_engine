@@ -1,4 +1,4 @@
-use glam::{DVec3, IVec3, UVec3, Vec2, Vec3};
+use glam::{DVec3, IVec3, UVec3, Vec2};
 use noise::NoiseFn;
 use wgpu::{RenderPass, util::DeviceExt};
 
@@ -12,11 +12,12 @@ pub struct Vertex {
     /// mapped to 0b0000000000000000000nnnxxxxxxyyyyyyzzzzzz
     pub normal_position: u32,
     pub uv: Vec2,
+    pub voxel_position: IVec3,
 }
 
 impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Uint32, 1 => Float32x2];
+    const ATTRIBS: [wgpu::VertexAttribute; 3] =
+        wgpu::vertex_attr_array![0 => Uint32, 1 => Float32x2, 2 => Sint32x3];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -75,7 +76,7 @@ impl Block {
 
 pub struct Chunk {
     pub position: IVec3,
-    pub world_position: Vec3,
+    pub world_position: IVec3,
     pub blocks: [Block; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
     pub is_empty: bool,
     pub bounding_box: Aabb,
@@ -87,14 +88,14 @@ impl Chunk {
     const HILL_NOISE_SCALE: f64 = 50.0;
 
     pub fn new(position: IVec3) -> Self {
-        let world_position = position.as_vec3() * CHUNK_SIZE as f32;
+        let world_position = position * CHUNK_SIZE as i32;
 
         let mut chunk = Self {
             position,
             world_position,
             blocks: [Block::AIR; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
             is_empty: true,
-            bounding_box: Aabb::new(world_position, world_position + CHUNK_SIZE as f32),
+            bounding_box: Aabb::new(world_position.as_vec3(), world_position.as_vec3() + CHUNK_SIZE as f32),
             mesh: None,
         };
 
@@ -103,7 +104,7 @@ impl Chunk {
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
-                    let voxel_position = Vec3::new(x as f32, y as f32, z as f32) + world_position;
+                    let voxel_position = IVec3::new(x as i32, y as i32, z as i32) + world_position;
                     let mut noise_pos = DVec3::new(
                         voxel_position.x as f64,
                         voxel_position.y as f64,
@@ -111,7 +112,7 @@ impl Chunk {
                     );
                     noise_pos += 0.5;
 
-                    if world_position.y < 0.0 {
+                    if world_position.y < 0 {
                         noise_pos /= Self::CAVE_NOISE_SCALE;
                         let val = ((noise.get([noise_pos.x, noise_pos.y, noise_pos.z]) + 1.0) / 2.0
                             * (CHUNK_SIZE - 1) as f64) as u32;
@@ -265,9 +266,12 @@ impl Chunk {
                             let normal_position = ((face as u32) << 18) | position;
                             let uv = block.get_uv(face, i);
 
+                            let voxel_position = self.world_position + IVec3::new(x as i32, y as i32, z as i32);
+
                             let v = Vertex {
                                 normal_position,
                                 uv,
+                                voxel_position,
                             };
 
                             temp_vertices.push(v);

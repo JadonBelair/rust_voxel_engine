@@ -1,6 +1,7 @@
 struct VertexInput {
-    @location(0) normal_position: u32,
-    @location(1) uv: vec2<f32>,
+	@location(0) normal_position: u32,
+	@location(1) uv: vec2<f32>,
+	@location(2) voxel_pos: vec3<i32>,
 };
 
 struct Camera {
@@ -11,7 +12,7 @@ struct Camera {
 @group(0) @binding(0)
 var<uniform> camera: Camera;
 
-var<push_constant> chunk_pos: vec3<f32>;
+var<push_constant> push: array<i32, 6>;
 
 const NORMALS: array<vec3<f32>, 6> = array(
 		vec3<f32>( 0.0,  0.0, -1.0), // Front
@@ -26,18 +27,18 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
 	@location(1) normal: vec3<f32>,
-	@location(2) camera_pos: vec3<f32>,
 	@location(3) frag_position: vec3<f32>,
+	@location(4) voxel_pos: vec3<i32>,
 };
 
 @vertex
 fn vs_main(
     vertex: VertexInput,
 ) -> VertexOutput {
-	let position: vec3<u32> = vec3<u32>(
-		(vertex.normal_position >> 12) & 0x3F,
-		(vertex.normal_position >>  6) & 0x3F,
-		(vertex.normal_position >>  0) & 0x3F,
+	let position = vec3<f32>(
+		f32((vertex.normal_position >> 12) & 0x3F),
+		f32((vertex.normal_position >>  6) & 0x3F),
+		f32((vertex.normal_position >>  0) & 0x3F),
 	);
 
 	var model = mat4x4<f32>(
@@ -46,8 +47,9 @@ fn vs_main(
 		0.0, 0.0, 1.0, 0.0,
 		0.0, 0.0, 0.0, 1.0,
 	);
+	let chunk_pos = vec3<f32>(f32(push[0]), f32(push[1]), f32(push[2]));
 	model[3] = vec4<f32>(chunk_pos, 1.0);
-	let world_position = model * vec4<f32>(vec3<f32>(position), 1.0);
+	let world_position = model * vec4<f32>(position, 1.0);
 
 	let normal_index = (vertex.normal_position >> 18) & 0x07;
 
@@ -56,7 +58,7 @@ fn vs_main(
     out.clip_position = camera.view_proj * world_position;
     out.frag_position = world_position.xyz;
 	out.normal = NORMALS[normal_index];
-	out.camera_pos = camera.view_pos.xyz;
+	out.voxel_pos = vertex.voxel_pos;
     return out;
 }
 
@@ -73,11 +75,13 @@ var s_atlas: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+	var result = vec3<f32>(1.0, 1.0, 1.0);
+	let look = vec3<i32>(push[3], push[4], push[5]);
 	let color = textureSample(t_atlas, s_atlas, in.uv).xyz;
 	if (BLINN_PHONG) {
 		let ambient = 0.4 * color;
 
-		var light_dir = in.camera_pos - in.frag_position;
+		var light_dir = camera.view_pos.xyz - in.frag_position;
 		let distance = length(light_dir);
 		light_dir = normalize(light_dir);
 
@@ -96,17 +100,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		let attenuated_specular = specular * attenuation;
 		let attenuated_diffuse = diffuse * attenuation;
 
-		let result = ambient + attenuated_diffuse;// + attenuated_specular;
-		return vec4<f32>(result, 1.0);
+		result = ambient + attenuated_diffuse;
 	} else {
-		var result = color;
+		result = color;
 
 		if (in.normal.x != 0.0) {
 			result *= 0.6;
 		} else if (in.normal.z != 0.) {
 			result *= 0.8;
 		}
-
-		return vec4<f32>(result, 1.0);
 	}
+
+	if (in.voxel_pos.x == look.x && in.voxel_pos.y == look.y && in.voxel_pos.z == look.z) {
+		result *= 1.8;
+		result = clamp(result, vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
+	}
+
+	return vec4<f32>(result, 1.0);
 }

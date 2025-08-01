@@ -1,12 +1,12 @@
 use std::{sync::Arc, time::Instant};
 
 use camera::{Camera, CameraController, CameraUniform, Projection};
-use chunk::{Block, CHUNK_SIZE, Vertex};
+use chunk::{Block, Vertex, CHUNK_SIZE};
 use chunk_manager::ChunkManager;
 use frustum::Frustum;
 use glam::{IVec3, Vec3};
 use texture::Texture;
-use wgpu::{PresentMode, util::DeviceExt};
+use wgpu::{util::DeviceExt, PresentMode};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
@@ -33,6 +33,8 @@ pub struct State {
 
     chunk_manager: ChunkManager,
     chosen_block: Block,
+    look_at_position: IVec3,
+    look_at_normal: IVec3,
 
     camera: Camera,
     projection: Projection,
@@ -42,6 +44,7 @@ pub struct State {
     camera_bind_group: wgpu::BindGroup,
 
     depth_texture: Texture,
+    #[allow(unused)]
     atlas_texture: Texture,
     atlas_bind_group: wgpu::BindGroup,
 }
@@ -72,7 +75,7 @@ impl State {
                     | wgpu::Features::POLYGON_MODE_POINT
                     | wgpu::Features::PUSH_CONSTANTS,
                 required_limits: wgpu::Limits {
-                    max_push_constant_size: 12,
+                    max_push_constant_size: 24,
                     ..wgpu::Limits::downlevel_defaults()
                 },
                 memory_hints: Default::default(),
@@ -123,7 +126,7 @@ impl State {
                 label: Some("Camera Bind Group Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -188,10 +191,16 @@ impl State {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[&camera_bind_group_layout, &atlas_bind_group_layout],
-                push_constant_ranges: &[wgpu::PushConstantRange {
-                    stages: wgpu::ShaderStages::VERTEX,
-                    range: 0..std::mem::size_of::<[f32; 3]>() as u32,
-                }],
+                push_constant_ranges: &[
+                    wgpu::PushConstantRange {
+                        stages: wgpu::ShaderStages::VERTEX,
+                        range: 0..12,
+                    },
+                    wgpu::PushConstantRange {
+                        stages: wgpu::ShaderStages::FRAGMENT,
+                        range: 12..24,
+                    },
+                ],
             });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -256,6 +265,8 @@ impl State {
 
             chunk_manager,
             chosen_block: Block::DIRT,
+            look_at_position: IVec3::ZERO,
+            look_at_normal: IVec3::ZERO,
 
             camera,
             projection,
@@ -288,35 +299,24 @@ impl State {
         button: MouseButton,
         is_pressed: bool,
     ) {
-        let hit = if matches!(
-            button,
-            MouseButton::Left | MouseButton::Right | MouseButton::Middle
-        ) && is_pressed
-        {
-            self.chunk_manager.ray_cast(
-                self.camera.position,
-                self.camera.yaw,
-                self.camera.pitch,
-                10.0,
-            )
-        } else {
-            None
-        };
+        let pos = self.look_at_position;
+        let normal = self.look_at_normal;
+        let hit_block = self.chunk_manager.get_block(self.look_at_position);
 
         match (button, is_pressed) {
             (MouseButton::Left, true) => {
-                if let Some((pos, _)) = hit {
+                if hit_block.is_some() && hit_block != Some(Block::AIR) {
                     self.chunk_manager.set_block(pos, Block::AIR);
                 }
             }
             (MouseButton::Right, true) => {
-                if let Some((pos, normal)) = hit {
+                if hit_block.is_some() && hit_block != Some(Block::AIR) {
                     self.chunk_manager
                         .set_block(pos + normal, self.chosen_block);
                 }
             }
             (MouseButton::Middle, true) => {
-                if let Some((pos, _)) = hit {
+                if hit_block.is_some() && hit_block != Some(Block::AIR) {
                     if let Some(block) = self.chunk_manager.get_block(pos) {
                         self.chosen_block = block;
                     }
@@ -353,6 +353,13 @@ impl State {
         let new_chunk = (self.camera.position / CHUNK_SIZE as f32)
             .floor()
             .as_ivec3();
+
+        (self.look_at_position, self.look_at_normal) = self.chunk_manager.ray_cast(
+            self.camera.position,
+            self.camera.yaw,
+            self.camera.pitch,
+            10.0,
+        );
 
         if prev_chunk != new_chunk {
             self.chunk_manager.update_around(new_chunk);
@@ -421,6 +428,11 @@ impl State {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(1, &self.atlas_bind_group, &[]);
+            render_pass.set_push_constants(
+                wgpu::ShaderStages::FRAGMENT,
+                12,
+                bytemuck::cast_slice(&self.look_at_position.to_array()),
+            );
             let frustum = Frustum::from_camera(&self.camera, &self.projection);
             self.chunk_manager.render(&mut render_pass, &frustum);
         }

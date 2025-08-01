@@ -77,7 +77,7 @@ impl ChunkManager {
         yaw: f32,
         pitch: f32,
         max_distance: f32,
-    ) -> Option<(IVec3, IVec3)> {
+    ) -> (IVec3, IVec3) {
         let (yaw_sin, yaw_cos) = yaw.sin_cos();
         let (pitch_sin, pitch_cos) = pitch.sin_cos();
 
@@ -97,7 +97,7 @@ impl ChunkManager {
         while traveled < max_distance {
             if let Some(block) = self.get_block(voxel) {
                 if !matches!(block, Block::AIR) {
-                    return Some((voxel, normal));
+                    break;
                 }
             }
 
@@ -126,7 +126,7 @@ impl ChunkManager {
             }
         }
 
-        None
+        (voxel, normal)
     }
 
     pub fn build_chunk_data_in_queue(&mut self, amount: usize) {
