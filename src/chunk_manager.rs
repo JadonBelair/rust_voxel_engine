@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 
+use ahash::{AHashMap, AHashSet};
 use glam::{IVec3, Vec3};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
@@ -9,24 +10,24 @@ use crate::{
 };
 
 pub struct ChunkManager {
-    pub chunk_map: HashMap<IVec3, Chunk>,
+    pub chunk_map: AHashMap<IVec3, Chunk>,
     pub chunk_data_load_queue: VecDeque<IVec3>,
     pub chunk_mesh_load_queue: VecDeque<IVec3>,
-    pub chunk_mesh_reload_queue: HashSet<IVec3>,
-    pub chunk_neighbor_loaded_queue: HashSet<IVec3>,
-    pub chunks_with_missing_neighbors: HashSet<IVec3>,
+    pub chunk_mesh_reload_queue: AHashSet<IVec3>,
+    pub chunk_neighbor_loaded_queue: AHashSet<IVec3>,
+    pub chunks_with_missing_neighbors: AHashSet<IVec3>,
     pub render_distance: i32,
 }
 
 impl ChunkManager {
     pub fn new(render_distance: i32) -> Self {
         Self {
-            chunk_map: HashMap::new(),
+            chunk_map: AHashMap::new(),
             chunk_data_load_queue: VecDeque::new(),
             chunk_mesh_load_queue: VecDeque::new(),
-            chunk_mesh_reload_queue: HashSet::new(),
-            chunk_neighbor_loaded_queue: HashSet::new(),
-            chunks_with_missing_neighbors: HashSet::new(),
+            chunk_mesh_reload_queue: AHashSet::new(),
+            chunk_neighbor_loaded_queue: AHashSet::new(),
+            chunks_with_missing_neighbors: AHashSet::new(),
             render_distance,
         }
     }
