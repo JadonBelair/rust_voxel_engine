@@ -39,6 +39,8 @@ pub enum Block {
     LOG = 4,
     PLANK = 5,
     LEAVES = 6,
+    SAND = 7,
+    BRICKS = 8,
 }
 
 impl Block {
@@ -66,6 +68,8 @@ impl Block {
             }
             Self::PLANK => 6,
             Self::LEAVES => 7,
+            Self::SAND => 8,
+            Self::BRICKS => 9,
         }
     }
 }

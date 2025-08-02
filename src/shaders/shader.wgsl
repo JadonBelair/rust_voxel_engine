@@ -127,13 +127,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 		if (in.normal.x != 0.0) {
 			result *= 0.6;
-		} else if (in.normal.z != 0.) {
+		} else if (in.normal.z != 0.0) {
 			result *= 0.8;
+		} else if (in.normal.y < 0.0) {
+		result *= 0.4;
 		}
 	}
 
 	if (in.voxel_pos.x == look.x && in.voxel_pos.y == look.y && in.voxel_pos.z == look.z) {
-		result *= 1.8;
+		result *= 1.5;
 		result = clamp(result, vec3<f32>(0.0), vec3<f32>(1.0));
 	}
 
