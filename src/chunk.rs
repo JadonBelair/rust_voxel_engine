@@ -32,22 +32,25 @@ impl Vertex {
 #[derive(Copy, Clone, PartialEq, Eq, Debug, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(usize)]
 pub enum Block {
-    AIR = 0,
-    DIRT = 1,
-    GRASS = 2,
-    STONE = 3,
-    LOG = 4,
-    PLANK = 5,
-    LEAVES = 6,
-    SAND = 7,
-    BRICKS = 8,
+    Air = 0,
+    Dirt = 1,
+    Grass = 2,
+    Stone = 3,
+    Log = 4,
+    Plank = 5,
+    Leaves = 6,
+    Sand = 7,
+    Bricks = 8,
+    Snow = 9,
+    Ice = 10,
+    StoneBricks = 11,
 }
 
 impl Block {
     fn get_uv(&self, side: usize) -> u8 {
         match self {
-            Self::AIR => 0,
-            Self::GRASS => {
+            Self::Air => 0,
+            Self::Grass => {
                 if side < 4 {
                     return 0;
                 }
@@ -57,19 +60,22 @@ impl Block {
                     return 2;
                 }
             }
-            Self::DIRT => 2,
-            Self::STONE => 3,
-            Self::LOG => {
+            Self::Dirt => 2,
+            Self::Stone => 3,
+            Self::Log => {
                 if side < 4 {
                     return 5;
                 } else {
                     return 4;
                 }
             }
-            Self::PLANK => 6,
-            Self::LEAVES => 7,
-            Self::SAND => 8,
-            Self::BRICKS => 9,
+            Self::Plank => 6,
+            Self::Leaves => 7,
+            Self::Sand => 8,
+            Self::Bricks => 9,
+            Self::Snow => 10,
+            Self::Ice => 11,
+            Self::StoneBricks => 12,
         }
     }
 }
@@ -93,7 +99,7 @@ impl Chunk {
         let mut chunk = Self {
             position,
             world_position,
-            blocks: [Block::AIR; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
+            blocks: [Block::Air; CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE],
             is_empty: true,
             bounding_box: Aabb::new(
                 world_position.as_vec3(),
@@ -121,7 +127,7 @@ impl Chunk {
                             * (CHUNK_SIZE - 1) as f64) as u32;
                         if val > 16 {
                             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] =
-                                Block::STONE;
+                                Block::Stone;
                             chunk.is_empty = false;
                         }
                     } else {
@@ -130,11 +136,11 @@ impl Chunk {
                             * CHUNK_SIZE as f64) as u32;
                         if val == voxel_position.y as u32 {
                             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] =
-                                Block::GRASS;
+                                Block::Grass;
                             chunk.is_empty = false;
                         } else if val > voxel_position.y as u32 {
                             chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x] =
-                                Block::DIRT;
+                                Block::Dirt;
                             chunk.is_empty = false;
                         }
                     }
@@ -152,7 +158,7 @@ impl Chunk {
 
         if self.blocks[index] != block {
             self.blocks[index] = block;
-            self.is_empty = self.blocks.iter().all(|b| *b == Block::AIR);
+            self.is_empty = self.blocks.iter().all(|b| *b == Block::Air);
             return true;
         }
 
@@ -197,7 +203,7 @@ impl Chunk {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
                     let block = self.blocks[CHUNK_SIZE * CHUNK_SIZE * z + CHUNK_SIZE * y + x];
-                    if block == Block::AIR {
+                    if block == Block::Air {
                         continue;
                     }
 
@@ -228,7 +234,7 @@ impl Chunk {
                             if self.blocks[CHUNK_SIZE * CHUNK_SIZE * nz as usize
                                 + CHUNK_SIZE * ny as usize
                                 + nx as usize]
-                                != Block::AIR
+                                != Block::Air
                             {
                                 render_face = false;
                             }
@@ -242,7 +248,7 @@ impl Chunk {
                                 if chunk.blocks[CHUNK_SIZE * CHUNK_SIZE * pos.z as usize
                                     + CHUNK_SIZE * pos.y as usize
                                     + pos.x as usize]
-                                    != Block::AIR
+                                    != Block::Air
                                 {
                                     render_face = false;
                                 }

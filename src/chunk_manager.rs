@@ -97,7 +97,7 @@ impl ChunkManager {
 
         while traveled < max_distance {
             if let Some(block) = self.get_block(voxel) {
-                if !matches!(block, Block::AIR) {
+                if !matches!(block, Block::Air) {
                     break;
                 }
             }

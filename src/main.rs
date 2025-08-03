@@ -265,7 +265,7 @@ impl State {
             is_cursor_visible: false,
 
             chunk_manager,
-            chosen_block: Block::DIRT,
+            chosen_block: Block::Dirt,
             look_at_position: IVec3::ZERO,
             look_at_normal: IVec3::ZERO,
 
@@ -306,18 +306,18 @@ impl State {
 
         match (button, is_pressed) {
             (MouseButton::Left, true) => {
-                if hit_block.is_some() && hit_block != Some(Block::AIR) {
-                    self.chunk_manager.set_block(pos, Block::AIR);
+                if hit_block.is_some() && hit_block != Some(Block::Air) {
+                    self.chunk_manager.set_block(pos, Block::Air);
                 }
             }
             (MouseButton::Right, true) => {
-                if hit_block.is_some() && hit_block != Some(Block::AIR) {
+                if hit_block.is_some() && hit_block != Some(Block::Air) {
                     self.chunk_manager
                         .set_block(pos + normal, self.chosen_block);
                 }
             }
             (MouseButton::Middle, true) => {
-                if hit_block.is_some() && hit_block != Some(Block::AIR) {
+                if hit_block.is_some() && hit_block != Some(Block::Air) {
                     if let Some(block) = self.chunk_manager.get_block(pos) {
                         self.chosen_block = block;
                     }
