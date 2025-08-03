@@ -1,6 +1,6 @@
 use enum_iterator::Sequence;
 use glam::{DVec3, IVec3, UVec3};
-use noise::NoiseFn;
+use noise::{Fbm, NoiseFn, Simplex};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use wgpu::{RenderPass, util::DeviceExt};
 
@@ -90,10 +90,7 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    const CAVE_NOISE_SCALE: f64 = 30.0;
-    const HILL_NOISE_SCALE: f64 = 50.0;
-
-    pub fn new(position: IVec3) -> Self {
+    pub fn new(position: IVec3, noise: &Fbm<Simplex>) -> Self {
         let world_position = position * CHUNK_SIZE as i32;
 
         let mut chunk = Self {
@@ -108,8 +105,6 @@ impl Chunk {
             mesh: None,
         };
 
-        let noise = noise::Perlin::new(0);
-
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
@@ -122,7 +117,7 @@ impl Chunk {
                     noise_pos += 0.5;
 
                     if world_position.y < 0 {
-                        noise_pos /= Self::CAVE_NOISE_SCALE;
+                        noise_pos *= 5.0;
                         let val = ((noise.get([noise_pos.x, noise_pos.y, noise_pos.z]) + 1.0) / 2.0
                             * (CHUNK_SIZE - 1) as f64) as u32;
                         if val > 16 {
@@ -131,7 +126,6 @@ impl Chunk {
                             chunk.is_empty = false;
                         }
                     } else {
-                        noise_pos /= Self::HILL_NOISE_SCALE;
                         let val = ((noise.get([noise_pos.x, noise_pos.z]) + 1.0) / 2.0
                             * CHUNK_SIZE as f64) as u32;
                         if val == voxel_position.y as u32 {

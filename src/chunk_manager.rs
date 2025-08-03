@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use ahash::{AHashMap, AHashSet};
 use glam::{IVec3, Vec3};
+use noise::{Fbm, MultiFractal, Simplex};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
@@ -17,10 +18,17 @@ pub struct ChunkManager {
     pub chunk_neighbor_loaded_queue: AHashSet<IVec3>,
     pub chunks_with_missing_neighbors: AHashSet<IVec3>,
     pub render_distance: i32,
+    pub noise: Fbm<Simplex>,
 }
 
 impl ChunkManager {
     pub fn new(render_distance: i32) -> Self {
+        let noise = noise::Fbm::<noise::Simplex>::new(0)
+            .set_octaves(3)
+            .set_frequency(0.01)
+            .set_lacunarity(2.0)
+            .set_persistence(0.5);
+
         Self {
             chunk_map: AHashMap::new(),
             chunk_data_load_queue: VecDeque::new(),
@@ -29,6 +37,7 @@ impl ChunkManager {
             chunk_neighbor_loaded_queue: AHashSet::new(),
             chunks_with_missing_neighbors: AHashSet::new(),
             render_distance,
+            noise,
         }
     }
 
@@ -135,7 +144,7 @@ impl ChunkManager {
             .filter_map(|_| self.chunk_data_load_queue.pop_front())
             .collect::<Vec<IVec3>>()
             .into_par_iter()
-            .map(Chunk::new)
+            .map(|pos| Chunk::new(pos, &self.noise))
             .collect::<Vec<Chunk>>();
 
         for chunk in chunks {
