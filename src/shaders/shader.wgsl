@@ -11,6 +11,9 @@ struct Camera {
 @group(0) @binding(0)
 var<uniform> camera: Camera;
 
+@group(2) @binding(0)
+var<uniform> time: f32;
+
 var<push_constant> push: array<i32, 6>;
 
 const NORMALS: array<vec3<f32>, 6> = array(
@@ -135,7 +138,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	}
 
 	if (in.voxel_pos.x == look.x && in.voxel_pos.y == look.y && in.voxel_pos.z == look.z) {
-		result *= 1.5;
+		result *= 1.0 + 2.0 * ((sin(time / 500.0) + 1.0) / 2.0);
 		result = clamp(result, vec3<f32>(0.0), vec3<f32>(1.0));
 	}
 

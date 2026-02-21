@@ -23,6 +23,8 @@ mod frustum;
 mod texture;
 
 pub struct State {
+    start: std::time::Instant,
+
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -48,6 +50,9 @@ pub struct State {
     #[allow(unused)]
     atlas_texture: Texture,
     atlas_bind_group: wgpu::BindGroup,
+
+    time_bind_group: wgpu::BindGroup,
+    time_buffer: wgpu::Buffer,
 }
 
 impl State {
@@ -187,11 +192,45 @@ impl State {
             label: Some("Atlas Bind Group"),
         });
 
+        let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Time Buffer"),
+            contents: bytemuck::cast_slice(&[0]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let time_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Time Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let time_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &time_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: time_buffer.as_entire_binding(),
+            }],
+            label: Some("Time Bind Group"),
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("shaders/shader.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout, &atlas_bind_group_layout],
+                bind_group_layouts: &[
+                    &camera_bind_group_layout,
+                    &atlas_bind_group_layout,
+                    &time_bind_group_layout,
+                ],
                 push_constant_ranges: &[
                     wgpu::PushConstantRange {
                         stages: wgpu::ShaderStages::VERTEX,
@@ -255,6 +294,8 @@ impl State {
             Texture::create_depth_texture(&device, size.width, size.height, Some("Depth Texture"));
 
         Ok(Self {
+            start: std::time::Instant::now(),
+
             surface,
             device,
             queue,
@@ -279,6 +320,9 @@ impl State {
             depth_texture,
             atlas_texture,
             atlas_bind_group,
+
+            time_bind_group,
+            time_buffer,
         })
     }
 
@@ -333,7 +377,9 @@ impl State {
             }
             (MouseButton::Back, true) => {
                 let current: usize = self.chosen_block.into();
-                if current > 1 && let Ok(next) = Block::try_from(current - 1) {
+                if current > 1
+                    && let Ok(next) = Block::try_from(current - 1)
+                {
                     self.chosen_block = next;
                 } else if let Some(block) = last::<Block>() {
                     self.chosen_block = block;
@@ -381,6 +427,14 @@ impl State {
         if prev_chunk != new_chunk {
             self.chunk_manager.update_around(new_chunk);
         }
+
+        self.queue.write_buffer(
+            &self.time_buffer,
+            0,
+            bytemuck::cast_slice(&[std::time::Instant::now()
+                .duration_since(self.start)
+                .as_millis() as f32]),
+        );
 
         self.camera_uniform
             .update_view_proj(&self.camera, &self.projection);
@@ -445,6 +499,7 @@ impl State {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_bind_group(1, &self.atlas_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.time_bind_group, &[]);
             render_pass.set_push_constants(
                 wgpu::ShaderStages::FRAGMENT,
                 12,
@@ -453,7 +508,6 @@ impl State {
             let frustum = Frustum::from_camera(&self.camera, &self.projection);
             self.chunk_manager.render(&mut render_pass, &frustum);
         }
-
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
